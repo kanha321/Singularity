@@ -1,0 +1,43 @@
+# Rust build artifacts
+target/
+**/*.rs.bk
+*.pdb
+
+# External reference repositories (ignore cloned upstream sources)
+references/*
+!references/.gitkeep
+
+# Local scratch scripts & temporary diagnostic output
+scratch/
+tmp/
+*.log
+crash.log
+*.sock
+
+# Environment & local secrets
+.env
+.env.*
+!.env.example
+
+# IDE & Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.helix/
+*.sublime-project
+*.sublime-workspace
+
+# OS specific files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Android companion app build outputs (Gradle / Kotlin)
+.gradle/
+build/
+local.properties
+*.apk
+*.aab
+.cxx/
