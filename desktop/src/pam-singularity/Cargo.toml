@@ -1,0 +1,15 @@
+[package]
+name = "pam-singularity"
+version = "0.1.0"
+edition = "2021"
+authors = ["Singularity Contributors"]
+license = "MIT OR Apache-2.0"
+
+[lib]
+name = "pam_singularity"
+crate-type = ["cdylib"]
+
+[dependencies]
+singularity-client = { path = "../singularity-client" }
+tokio = { version = "1.38", features = ["rt", "net", "io-util", "time", "macros"] }
+libc = "0.2"

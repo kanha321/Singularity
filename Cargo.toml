@@ -1,0 +1,46 @@
+[workspace]
+resolver = "2"
+members = [
+    "desktop/src/singularity-core",
+    "desktop/src/singularity-protocol",
+    "desktop/src/singularity-client",
+    "desktop/src/singularity-daemon",
+    "desktop/src/singularity-cli",
+    "desktop/src/pam-singularity",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Singularity Contributors"]
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+# Internal Workspace Crates
+singularity-core = { path = "desktop/src/singularity-core" }
+singularity-protocol = { path = "desktop/src/singularity-protocol" }
+singularity-client = { path = "desktop/src/singularity-client" }
+
+# Async & Networking
+tokio = { version = "1.38", features = ["full"] }
+tokio-util = { version = "0.7", features = ["codec"] }
+async-trait = "0.1"
+futures = "0.3"
+byteorder = "1.5"
+
+# Serialization & IPC
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Wayland Integration
+wl-clipboard-rs = "0.9"
+
+# Diagnostics & Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+thiserror = "1.0"
+
+# CLI & Paths
+clap = { version = "4.5", features = ["derive", "env"] }
+dirs = "5.0"
+tempfile = "3.10"

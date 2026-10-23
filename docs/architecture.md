@@ -27,17 +27,20 @@ Following the pattern established in `LumosRGB`, the system is structured as a m
 
 ```
 singularity/
+├── android/                  # Android companion app (Kotlin / Jetpack Compose)
+├── desktop/                  # Desktop convergence engine (Safe Rust)
+│   └── src/
+│       ├── singularity-core/     # The Abstraction Barrier: DeviceBridge & Pluggable Features
+│       ├── singularity-protocol/ # Pure wire codecs, framing & IPC packet types (Zero I/O)
+│       ├── singularity-client/   # Lightweight async client for talking to the Daemon
+│       ├── singularity-daemon/   # Headless 24/7 background service (Tokio, ADB, Wayland)
+│       ├── singularity-gui/      # Tactical desktop UI built exclusively on egui-widgetkit
+│       └── singularity-cli/      # Fast command-line utility for Hyprland keybinds & Waybar
+├── assets/                   # Vendored payloads (scrcpy-server.jar)
 ├── docs/                     # Architectural specifications & guides
 ├── achievements/             # Empirical validation logs & test outputs
 ├── references/               # Upstream reference repos (scrcpy, kdeconnect)
-├── Cargo.toml                # Workspace root resolver
-└── src/
-    ├── singularity-core/     # The Abstraction Barrier: DeviceBridge & Pluggable Features
-    ├── singularity-protocol/ # Pure wire codecs, framing & IPC packet types (Zero I/O)
-    ├── singularity-client/   # Lightweight async client for talking to the Daemon
-    ├── singularity-daemon/   # Headless 24/7 background service (Tokio, ADB, Wayland)
-    ├── singularity-gui/      # Tactical desktop UI built exclusively on egui-widgetkit
-    └── singularity-cli/      # Fast command-line utility for Hyprland keybinds & Waybar
+└── Cargo.toml                # Root workspace resolver
 ```
 
 ### Crate Roles & Architectural Boundaries
