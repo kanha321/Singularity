@@ -11,6 +11,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
+import android.media.AudioAttributes
+import android.media.RingtoneManager
 import android.net.LocalServerSocket
 import android.os.Build
 import android.os.IBinder
@@ -32,6 +34,7 @@ import java.net.ServerSocket
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 
 data class PendingAuth(
     val reason: String,
@@ -39,12 +42,19 @@ data class PendingAuth(
     val startTime: Long = System.currentTimeMillis()
 )
 
+data class AuthResultData(
+    val success: Boolean,
+    val error: String?,
+    val failedAttempts: Int = 0,
+    val isLockout: Boolean = false
+)
+
 class AppBridgeService : Service() {
 
     companion object {
         const val TAG = "SingularityAppBridge"
         const val CHANNEL_ID = "singularity_highway_channel"
-        const val AUTH_CHANNEL_ID = "singularity_auth_channel"
+        const val AUTH_CHANNEL_ID = "singularity_auth_alerts_v6"
         const val LOCK_STATUS_CHANNEL_ID = "singularity_lock_status_v2"
         const val NOTIFICATION_ID = 2828
         const val AUTH_NOTIFICATION_ID = 2829
@@ -60,9 +70,21 @@ class AppBridgeService : Service() {
         val isPcConnected = MutableStateFlow<Boolean>(false)
         val isPhoneLocked = MutableStateFlow<Boolean>(false)
         val pendingUnlockRequest = AtomicBoolean(false)
+        val pendingLockRequest = AtomicBoolean(false)
+        val pendingLogoutRequest = AtomicBoolean(false)
+        val pendingLoginRequest = AtomicBoolean(false)
+        val pendingPowerAction = AtomicReference<String?>(null)
         val lastPacketReceivedMs = AtomicLong(0L)
         val activeConnections = AtomicInteger(0)
-        private var activePendingAuth: CompletableDeferred<Pair<Boolean, String?>>? = null
+        val isActivityVisible = AtomicBoolean(false)
+        private var activeServiceInstance: AppBridgeService? = null
+        private var activePendingAuth: CompletableDeferred<AuthResultData>? = null
+        private var activeProgressCallback: ((String, Int, String?) -> Unit)? = null
+
+        fun onActivityStopped(context: Context) {
+            Log.d(TAG, "MainActivity stopped. Checking if service should enter disconnect shutdown...")
+            activeServiceInstance?.checkDisconnectGracePeriod()
+        }
 
         fun onPcDisconnected(context: Context? = null) {
             if (!isPcConnected.value && pcLockState.value == "disconnected") return
@@ -71,6 +93,11 @@ class AppBridgeService : Service() {
             pcLockState.value = "disconnected"
             pcLoginState.value = false
             currentAuthRequest.value = null
+            pendingUnlockRequest.set(false)
+            pendingLockRequest.set(false)
+            pendingLogoutRequest.set(false)
+            pendingLoginRequest.set(false)
+            pendingPowerAction.set(null)
             rejectActiveAuth("PC disconnected")
             BiometricAuthActivity.dismissActivePrompt()
             if (context != null) {
@@ -81,6 +108,31 @@ class AppBridgeService : Service() {
         fun requestPcUnlock() {
             pendingUnlockRequest.set(true)
             Log.i(TAG, "PC unlock requested via biometric authentication")
+        }
+
+        fun requestPcLock() {
+            pendingLockRequest.set(true)
+            Log.i(TAG, "PC lock requested by user")
+        }
+
+        fun requestPcLogout() {
+            pendingLogoutRequest.set(true)
+            Log.i(TAG, "PC logout requested by user")
+        }
+
+        fun requestPcLogin() {
+            pendingLoginRequest.set(true)
+            pendingUnlockRequest.set(true)
+            Log.i(TAG, "PC login requested via biometric authentication")
+        }
+
+        fun requestPowerAction(action: String) {
+            pendingPowerAction.set(action)
+            Log.i(TAG, "PC power action requested: $action")
+        }
+
+        fun pushAuthSettings(settings: com.kanhaji.singularity.feature.auth.model.AuthSettings) {
+            Log.i(TAG, "Auth settings updated: ${settings.toJson()}")
         }
 
         fun dismissPcLockedNotification(context: Context) {
@@ -107,29 +159,36 @@ class AppBridgeService : Service() {
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )
 
-                val notification = NotificationCompat.Builder(context, LOCK_STATUS_CHANNEL_ID)
+                notifManager.cancel(PC_LOCKED_NOTIFICATION_ID)
+
+                val builder = NotificationCompat.Builder(context, AUTH_CHANNEL_ID)
                     .setSmallIcon(R.mipmap.ic_launcher)
                     .setContentTitle("💻 PC Screen Locked")
-                    .setContentText("Touch fingerprint sensor to unlock laptop")
-                    .setPriority(NotificationCompat.PRIORITY_LOW)
-                    .setCategory(NotificationCompat.CATEGORY_STATUS)
+                    .setContentText("Tap to unlock laptop with fingerprint")
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setCategory(NotificationCompat.CATEGORY_EVENT)
                     .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                    .setOngoing(true)
-                    .setSilent(true)
-                    .setOnlyAlertOnce(true)
-                    .setAutoCancel(false)
+                    .setDefaults(NotificationCompat.DEFAULT_ALL)
+                    .setVibrate(longArrayOf(0, 200, 100, 200))
+                    .setAutoCancel(true)
+                    .setTimeoutAfter(120_000L)
                     .setContentIntent(pendingIntent)
                     .addAction(R.mipmap.ic_launcher, "🔓 Unlock with Fingerprint", pendingIntent)
-                    .build()
 
-                notifManager.notify(PC_LOCKED_NOTIFICATION_ID, notification)
+                notifManager.notify(PC_LOCKED_NOTIFICATION_ID, builder.build())
             } catch (e: Exception) {
                 Log.w(TAG, "Error posting PC locked notification: ${e.message}")
             }
         }
 
-        fun reportBiometricResult(success: Boolean, error: String?) {
-            activePendingAuth?.complete(Pair(success, error))
+        fun reportBiometricProgress(event: String, attempt: Int, message: String? = null) {
+            try {
+                activeProgressCallback?.invoke(event, attempt, message)
+            } catch (_: Exception) {}
+        }
+
+        fun reportBiometricResult(success: Boolean, error: String?, failedAttempts: Int = 0, isLockout: Boolean = false) {
+            activePendingAuth?.complete(AuthResultData(success, error, failedAttempts, isLockout))
             currentAuthRequest.value = null
         }
 
@@ -162,12 +221,11 @@ class AppBridgeService : Service() {
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle("Singularity Authentication Request")
                 .setContentText("Tap to touch fingerprint on POCO F5")
-                .setPriority(NotificationCompat.PRIORITY_MAX)
-                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_EVENT)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setContentIntent(relaunchPending)
-                .setOngoing(true)
-                .setAutoCancel(false)
+                .setAutoCancel(true)
                 .addAction(R.mipmap.ic_launcher, "Verify Fingerprint", relaunchPending)
                 .addAction(R.mipmap.ic_launcher, "Use Password", rejectPending)
                 .build()
@@ -176,7 +234,7 @@ class AppBridgeService : Service() {
         }
 
         fun rejectActiveAuth(reason: String = "User rejected in app") {
-            activePendingAuth?.complete(Pair(false, reason))
+            activePendingAuth?.complete(AuthResultData(false, reason, 0, false))
             currentAuthRequest.value = null
         }
 
@@ -206,6 +264,7 @@ class AppBridgeService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var localServerSocket: LocalServerSocket? = null
     private var tcpServerSocket: ServerSocket? = null
+    private var shutdownTimerJob: Job? = null
 
     private val screenLockReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -221,6 +280,9 @@ class AppBridgeService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        activeServiceInstance = this
+        shutdownTimerJob?.cancel()
+        shutdownTimerJob = null
         createNotificationChannel()
         startForegroundServiceNotification()
 
@@ -236,6 +298,7 @@ class AppBridgeService : Service() {
 
         startSocketServer()
         startConnectionWatchdog()
+        checkDisconnectGracePeriod()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -259,11 +322,14 @@ class AppBridgeService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        shutdownTimerJob?.cancel()
+        shutdownTimerJob = null
+        if (activeServiceInstance == this) activeServiceInstance = null
         serviceScope.cancel()
         try { unregisterReceiver(screenLockReceiver) } catch (_: Exception) {}
         try { localServerSocket?.close() } catch (_: Exception) {}
         try { tcpServerSocket?.close() } catch (_: Exception) {}
-        handlePcDisconnected()
+        onPcDisconnected(this)
         super.onDestroy()
     }
 
@@ -285,6 +351,13 @@ class AppBridgeService : Service() {
                 lockscreenVisibility = Notification.VISIBILITY_PUBLIC
                 setBypassDnd(true)
                 enableVibration(true)
+                enableLights(true)
+                vibrationPattern = longArrayOf(0, 200, 100, 200)
+                val audioAttributes = AudioAttributes.Builder()
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .setUsage(AudioAttributes.USAGE_NOTIFICATION_COMMUNICATION_INSTANT)
+                    .build()
+                setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION), audioAttributes)
             }
             val lockStatusChannel = NotificationChannel(
                 LOCK_STATUS_CHANNEL_ID,
@@ -299,6 +372,9 @@ class AppBridgeService : Service() {
             val manager = getSystemService(NotificationManager::class.java)
             try {
                 manager.deleteNotificationChannel("singularity_lock_status_channel")
+                manager.deleteNotificationChannel("singularity_auth_channel")
+                manager.deleteNotificationChannel("singularity_auth_alerts_v2")
+                manager.deleteNotificationChannel("singularity_auth_alerts_v3")
             } catch (_: Exception) {}
             manager.createNotificationChannel(highwayChannel)
             manager.createNotificationChannel(authChannel)
@@ -360,10 +436,56 @@ class AppBridgeService : Service() {
         } catch (_: Exception) {}
     }
 
+    fun checkDisconnectGracePeriod() {
+        if (!isPcConnected.value && !isActivityVisible.get()) {
+            if (shutdownTimerJob == null || shutdownTimerJob?.isActive != true) {
+                shutdownTimerJob = serviceScope.launch {
+                    Log.i(TAG, "PC disconnected and app in background. Shutdown grace period started (15s)...")
+                    delay(15_000L)
+                    if (!isPcConnected.value && !isActivityVisible.get()) {
+                        Log.i(TAG, "Shutdown grace period expired. Gracefully terminating AppBridgeService.")
+                        teardownAndStopService()
+                    } else {
+                        Log.i(TAG, "Shutdown cancelled: state resumed (connected=${isPcConnected.value}, activityVisible=${isActivityVisible.get()})")
+                    }
+                }
+            }
+        }
+    }
+
     private fun handlePcDisconnected() {
         onPcDisconnected(this)
         dismissPcLockedNotification()
         updateHighwayNotification(false)
+        checkDisconnectGracePeriod()
+    }
+
+    private fun teardownAndStopService() {
+        try {
+            shutdownTimerJob?.cancel()
+            shutdownTimerJob = null
+            onPcDisconnected(this)
+            dismissPcLockedNotification()
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            } else {
+                @Suppress("DEPRECATION")
+                stopForeground(true)
+            }
+            val manager = getSystemService(NotificationManager::class.java)
+            manager?.cancel(NOTIFICATION_ID)
+            manager?.cancel(AUTH_NOTIFICATION_ID)
+            manager?.cancel(PC_LOCKED_NOTIFICATION_ID)
+
+            try { localServerSocket?.close() } catch (_: Exception) {}
+            try { tcpServerSocket?.close() } catch (_: Exception) {}
+
+            stopSelf()
+        } catch (e: Exception) {
+            Log.w(TAG, "Error during teardownAndStopService: ${e.message}")
+            stopSelf()
+        }
     }
 
     private fun startConnectionWatchdog() {
@@ -429,6 +551,11 @@ class AppBridgeService : Service() {
                 if (reqStr.isEmpty()) continue
 
                 lastPacketReceivedMs.set(System.currentTimeMillis())
+                if (shutdownTimerJob?.isActive == true) {
+                    Log.i(TAG, "Packet received from PC during grace period; cancelling shutdown timer")
+                    shutdownTimerJob?.cancel()
+                    shutdownTimerJob = null
+                }
                 if (!isPcConnected.value) {
                     isPcConnected.value = true
                     updateHighwayNotification(true)
@@ -447,10 +574,30 @@ class AppBridgeService : Service() {
                     "status" -> JSONObject()
                         .put("status", "online")
                         .put("package", packageName)
+                    "shutdown", "terminate_service" -> {
+                        Log.i(TAG, "Explicit termination requested by PC daemon")
+                        writer.println(JSONObject().put("status", "shutting_down").toString())
+                        writer.flush()
+                        serviceScope.launch {
+                            delay(100)
+                            teardownAndStopService()
+                        }
+                        JSONObject().put("status", "shutting_down")
+                    }
                     "authenticate" -> {
                         val reason = json.optString("reason", "Host Authentication")
                         val timeout = json.optLong("timeout_secs", 15L)
-                        processBiometricAuth(reason, timeout)
+                        val authAction = json.optString("auth_action", json.optString("action_type", "sudo"))
+                        processBiometricAuth(authAction, reason, timeout) { event, attempt, message ->
+                            try {
+                                val progressJson = JSONObject().put("event", event).put("attempt", attempt)
+                                if (message != null) progressJson.put("message", message)
+                                writer.println(progressJson.toString())
+                                writer.flush()
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Error writing progress: ${e.message}")
+                            }
+                        }
                     }
                     "cancel_auth" -> {
                         rejectActiveAuth("Cancelled by user on host")
@@ -475,12 +622,23 @@ class AppBridgeService : Service() {
                             }
                         }
                         val reqUnlock = pendingUnlockRequest.getAndSet(false)
-                        JSONObject()
+                        val reqLock = pendingLockRequest.getAndSet(false)
+                        val reqLogout = pendingLogoutRequest.getAndSet(false)
+                        val reqLogin = pendingLoginRequest.getAndSet(false)
+                        val reqPower = pendingPowerAction.getAndSet(null)
+                        val resp = JSONObject()
                             .put("status", "ok")
                             .put("pc_locked", locked)
                             .put("logged_in", loggedIn)
                             .put("isLoggedIn", loggedIn)
-                            .put("request_unlock", reqUnlock)
+                            .put("request_unlock", reqUnlock || reqLogin)
+                            .put("request_lock", reqLock)
+                            .put("request_logout", reqLogout)
+                            .put("auth_settings", com.kanhaji.singularity.feature.auth.data.AuthSettingsManager.settings.value.toJson())
+                        if (reqPower != null) {
+                            resp.put("request_power", reqPower)
+                        }
+                        resp
                     }
                     else -> JSONObject().put("status", "unsupported")
                 }
@@ -506,16 +664,37 @@ class AppBridgeService : Service() {
         }
     }
 
-    private suspend fun processBiometricAuth(reason: String, timeoutSecs: Long): JSONObject {
-        wakeScreen()
+    private suspend fun processBiometricAuth(
+        authAction: String,
+        reason: String,
+        timeoutSecs: Long,
+        onProgress: (String, Int, String?) -> Unit
+    ): JSONObject {
+        val settings = com.kanhaji.singularity.feature.auth.data.AuthSettingsManager.settings.value
+        if (settings.isSnoozed) {
+            com.kanhaji.singularity.feature.auth.data.AuthSettingsManager.addLog(authAction, "Snooze", "Snoozed")
+            return JSONObject().put("status", "rejected").put("reason", "snoozed")
+        }
 
-        val deferred = CompletableDeferred<Pair<Boolean, String?>>()
+        val mode = settings.getModeForAction(authAction)
+        if (mode == com.kanhaji.singularity.feature.auth.model.AuthMode.DENY) {
+            com.kanhaji.singularity.feature.auth.data.AuthSettingsManager.addLog(authAction, "Deny", "Denied")
+            return JSONObject().put("status", "rejected").put("reason", "denied_by_policy")
+        }
+
+        val effectiveTimeout = if (mode == com.kanhaji.singularity.feature.auth.model.AuthMode.NOTIFY) {
+            settings.notifyTimeoutSecs.toLong()
+        } else {
+            timeoutSecs.coerceAtLeast(settings.promptTimeoutSecs.toLong())
+        }
+
+        val deferred = CompletableDeferred<AuthResultData>()
         activePendingAuth = deferred
-        currentAuthRequest.value = PendingAuth(reason, timeoutSecs)
+        activeProgressCallback = onProgress
+        currentAuthRequest.value = PendingAuth(reason, effectiveTimeout)
 
         val intent = Intent(this, BiometricAuthActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_NO_ANIMATION
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION
             putExtra(BiometricAuthActivity.EXTRA_TITLE, "Singularity Security")
             putExtra(BiometricAuthActivity.EXTRA_REASON, reason)
         }
@@ -550,41 +729,71 @@ class AppBridgeService : Service() {
         val notifManager = getSystemService(NotificationManager::class.java)
 
         try {
-            startActivity(intent)
-        } catch (e: Exception) {
-            Log.w(TAG, "Direct startActivity blocked by BAL; falling back to notification: ${e.message}")
-            val authNotification = NotificationCompat.Builder(this, AUTH_CHANNEL_ID)
+            notifManager?.cancel(AUTH_NOTIFICATION_ID)
+
+            val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
+            val isInteractive = pm?.isInteractive ?: true
+
+            val builder = NotificationCompat.Builder(this, AUTH_CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle("Singularity Authentication Request")
                 .setContentText(reason)
-                .setPriority(NotificationCompat.PRIORITY_MAX)
-                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_EVENT)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                .setOnlyAlertOnce(true)
-                .setFullScreenIntent(pendingIntent, true)
+                .setDefaults(NotificationCompat.DEFAULT_ALL)
+                .setVibrate(longArrayOf(0, 200, 100, 200))
                 .setContentIntent(relaunchPending)
-                .setOngoing(true)
-                .setAutoCancel(false)
+                .setAutoCancel(true)
+                .setTimeoutAfter(effectiveTimeout * 1000L)
                 .addAction(R.mipmap.ic_launcher, "Verify with Fingerprint", relaunchPending)
                 .addAction(R.mipmap.ic_launcher, "Use Password", rejectPending)
-                .build()
 
-            notifManager.notify(AUTH_NOTIFICATION_ID, authNotification)
-        }
+            if (mode == com.kanhaji.singularity.feature.auth.model.AuthMode.PROMPT && !isInteractive) {
+                builder.setFullScreenIntent(pendingIntent, true)
+            }
 
-        return try {
-            val (success, err) = withTimeout(timeoutSecs * 1000L) {
+            notifManager.notify(AUTH_NOTIFICATION_ID, builder.build())
+
+            if (mode == com.kanhaji.singularity.feature.auth.model.AuthMode.PROMPT) {
+                wakeScreen()
+                try {
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Direct startActivity blocked by BAL: ${e.message}")
+                }
+            }
+
+            val result = withTimeout(effectiveTimeout * 1000L) {
                 deferred.await()
             }
-            if (success) {
-                JSONObject().put("status", "success")
+            val logResult = if (result.success) {
+                if (result.failedAttempts > 0) "Approved (${result.failedAttempts} retries)" else "Approved"
             } else {
-                JSONObject().put("status", "rejected").put("reason", err ?: "Cancelled")
+                if (result.isLockout) "Locked Out (${result.failedAttempts} attempts)" else "Denied (${result.failedAttempts} attempts)"
+            }
+            com.kanhaji.singularity.feature.auth.data.AuthSettingsManager.addLog(
+                authAction,
+                mode.label,
+                logResult
+            )
+            return if (result.success) {
+                JSONObject().put("status", "success").put("failed_attempts", result.failedAttempts)
+            } else {
+                JSONObject().put("status", "rejected").put("reason", result.error ?: "Cancelled")
+                    .put("failed_attempts", result.failedAttempts)
+                    .put("is_lockout", result.isLockout)
             }
         } catch (e: TimeoutCancellationException) {
-            JSONObject().put("status", "timeout").put("reason", "Prompt timed out")
+            com.kanhaji.singularity.feature.auth.data.AuthSettingsManager.addLog(
+                authAction,
+                mode.label,
+                "Timed Out"
+            )
+            return JSONObject().put("status", "timeout").put("reason", "Prompt timed out")
         } finally {
-            notifManager.cancel(AUTH_NOTIFICATION_ID)
+            activeProgressCallback = null
+            notifManager?.cancel(AUTH_NOTIFICATION_ID)
             currentAuthRequest.value = null
             activePendingAuth = null
         }
@@ -605,19 +814,38 @@ class AppBridgeService : Service() {
     }
 
     private fun showPcLockedPrompt() {
-        wakeScreen()
-        val intent = Intent(this, BiometricAuthActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_NO_ANIMATION
-            putExtra(BiometricAuthActivity.EXTRA_TITLE, "Singularity Lockscreen")
-            putExtra(BiometricAuthActivity.EXTRA_REASON, "Unlock PC Screen")
-            putExtra(BiometricAuthActivity.EXTRA_IS_UNLOCK, true)
+        val settings = com.kanhaji.singularity.feature.auth.data.AuthSettingsManager.settings.value
+        if (settings.isSnoozed) {
+            Log.i(TAG, "PC locked, but snooze active - skipping prompt")
+            return
         }
-        try {
-            startActivity(intent)
-        } catch (e: Exception) {
-            Log.w(TAG, "Direct launch error: ${e.message}")
-            showPcLockedNotification(this)
+
+        when (settings.unlockMode) {
+            com.kanhaji.singularity.feature.auth.model.AuthMode.DENY -> {
+                Log.i(TAG, "PC locked, unlock policy is DENY - skipping prompt and notification")
+                dismissPcLockedNotification()
+            }
+            com.kanhaji.singularity.feature.auth.model.AuthMode.NOTIFY -> {
+                Log.i(TAG, "PC locked, unlock policy is NOTIFY - posting notification only")
+                showPcLockedNotification(this)
+            }
+            com.kanhaji.singularity.feature.auth.model.AuthMode.PROMPT -> {
+                Log.i(TAG, "PC locked, unlock policy is PROMPT - waking screen and showing prompt")
+                showPcLockedNotification(this)
+                wakeScreen()
+                val intent = Intent(this, BiometricAuthActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_NO_ANIMATION
+                    putExtra(BiometricAuthActivity.EXTRA_TITLE, "Singularity Lockscreen")
+                    putExtra(BiometricAuthActivity.EXTRA_REASON, "Unlock PC Screen")
+                    putExtra(BiometricAuthActivity.EXTRA_IS_UNLOCK, true)
+                }
+                try {
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Direct launch error: ${e.message}")
+                }
+            }
         }
     }
 

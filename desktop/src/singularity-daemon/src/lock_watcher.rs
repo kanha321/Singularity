@@ -1,81 +1,18 @@
+pub mod session;
+pub mod stream;
+
+pub use session::*;
+pub use stream::*;
+
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::Command;
 use tokio::sync::RwLock;
-use crate::error::{DaemonError, Result};
-use crate::transport::AdbTunnel;
+use crate::auth_cache::SharedAuthCache;
 
-pub async fn query_pc_screen_locked() -> bool {
-    let out = Command::new("dms").args(["ipc", "call", "lock", "isLocked"]).output().await;
-    match out {
-        Ok(o) => String::from_utf8_lossy(&o.stdout).trim() == "true",
-        Err(_) => {
-            let bus = Command::new("busctl")
-                .args(["--user", "call", "org.freedesktop.ScreenSaver", "/org/freedesktop/ScreenSaver", "org.freedesktop.ScreenSaver", "GetActive"])
-                .output().await;
-            bus.map(|o| String::from_utf8_lossy(&o.stdout).contains("true")).unwrap_or(false)
-        }
-    }
-}
-
-pub async fn query_pc_logged_in() -> bool {
-    let out = Command::new("loginctl").args(["list-sessions", "--no-legend"]).output().await;
-    out.map(|o| {
-        String::from_utf8_lossy(&o.stdout).lines().any(|l| {
-            let p: Vec<&str> = l.split_whitespace().collect();
-            p.len() >= 6 && p.contains(&"user") && p.iter().any(|s| s.starts_with("seat"))
-        })
-    }).unwrap_or(false)
-}
-
-pub async fn trigger_pc_unlock() {
-    tracing::info!(target: "lock_watcher", "Triggering PC screen unlock via DMS");
-    let _ = Command::new("dms").args(["ipc", "call", "lock", "unlock"]).status().await;
-}
-
-struct AppBridgeStream {
-    reader: BufReader<tokio::net::unix::OwnedReadHalf>,
-    writer: tokio::net::unix::OwnedWriteHalf,
-}
-
-impl AppBridgeStream {
-    async fn connect(adb_address: &str) -> Result<Self> {
-        let stream = AdbTunnel::connect_unix(adb_address, "singularity_app").await?;
-        let (r, w) = stream.into_split();
-        Ok(Self { reader: BufReader::new(r), writer: w })
-    }
-
-    async fn exchange(&mut self, locked: bool, logged_in: bool) -> Result<bool> {
-        let req = serde_json::json!({
-            "action": "lock_state", "locked": locked, "logged_in": logged_in, "isLoggedIn": logged_in
-        });
-        let mut req_str = serde_json::to_string(&req).map_err(|e| DaemonError::Protocol(e.into()))?;
-        req_str.push('\n');
-        self.writer.write_all(req_str.as_bytes()).await?;
-        self.writer.flush().await?;
-
-        let mut resp = String::new();
-        let bytes_read = self.reader.read_line(&mut resp).await?;
-        if bytes_read == 0 {
-            return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "Stream closed").into());
-        }
-
-        let unlock = serde_json::from_str::<serde_json::Value>(&resp)
-            .ok()
-            .and_then(|v| v.get("request_unlock").and_then(|u| u.as_bool()))
-            .unwrap_or(false);
-        Ok(unlock)
-    }
-}
-
-#[allow(dead_code)]
-pub async fn send_lock_packet(adb_address: &str, is_locked: bool, is_logged_in: bool) -> Result<bool> {
-    let mut stream = AppBridgeStream::connect(adb_address).await?;
-    stream.exchange(is_locked, is_logged_in).await
-}
-
-pub fn start_lock_watcher(active_device: Arc<RwLock<String>>) -> tokio::task::JoinHandle<()> {
+pub fn start_lock_watcher(
+    active_device: Arc<RwLock<String>>,
+    auth_cache: SharedAuthCache,
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut last_state = None;
         let mut client: Option<AppBridgeStream> = None;
@@ -107,9 +44,35 @@ pub fn start_lock_watcher(active_device: Arc<RwLock<String>>) -> tokio::task::Jo
             }
 
             if let Some(ref mut stream) = client {
-                match stream.exchange(current_locked, current_logged_in).await {
-                    Ok(true) if current_locked => trigger_pc_unlock().await,
-                    Ok(_) => {}
+                match stream.exchange(current_locked, current_logged_in, &auth_cache).await {
+                    Ok(actions) => {
+                        if actions.lock {
+                            trigger_pc_lock().await;
+                        }
+                        if actions.logout {
+                            trigger_pc_logout().await;
+                        }
+                        if let Some(ref power) = actions.power {
+                            match power.as_str() {
+                                "reboot" => trigger_pc_reboot().await,
+                                "shutdown" => trigger_pc_shutdown().await,
+                                "logout" => trigger_pc_logout().await,
+                                "suspend" => trigger_pc_suspend().await,
+                                "hibernate" => trigger_pc_hibernate().await,
+                                other => tracing::warn!(target: "lock_watcher", "Unknown power action: {}", other),
+                            }
+                        }
+                        if actions.unlock {
+                            let cache = auth_cache.read().await;
+                            let denied = cache.is_denied("unlock") || cache.is_snoozed();
+                            drop(cache);
+                            if denied {
+                                tracing::warn!(target: "lock_watcher", "Ignored PC unlock request: unlock is denied or snoozed");
+                            } else {
+                                trigger_pc_unlock().await;
+                            }
+                        }
+                    }
                     Err(e) => {
                         tracing::debug!(target: "lock_watcher", "AppBridge socket dropped: {}, will reconnect", e);
                         client = None;
@@ -124,13 +87,26 @@ pub fn start_lock_watcher(active_device: Arc<RwLock<String>>) -> tokio::task::Jo
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn parse_lock_json_matches_expected() {
         let json = serde_json::json!({
-            "action": "lock_state", "locked": true, "logged_in": false, "isLoggedIn": false
+            "action": "lock_state", "locked": true, "logged_in": false, "isLoggedIn": false,
+            "request_lock": true, "request_logout": false, "request_unlock": false,
+            "request_power": "suspend"
         });
         assert_eq!(json["locked"], true);
-        assert_eq!(json["logged_in"], false);
-        assert_eq!(json["isLoggedIn"], false);
+        assert_eq!(json["request_lock"], true);
+        assert_eq!(json["request_power"], "suspend");
+    }
+
+    #[test]
+    fn default_lock_actions_has_none_power() {
+        let actions = LockActions::default();
+        assert!(!actions.unlock);
+        assert!(!actions.lock);
+        assert!(!actions.logout);
+        assert_eq!(actions.power, None);
     }
 }

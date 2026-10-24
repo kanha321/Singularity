@@ -17,11 +17,19 @@ pub struct PamHandle {
     _opaque: [u8; 0],
 }
 
+pub const PAM_SERVICE: c_int = 1;
+
 extern "C" {
     fn pam_get_user(
         pamh: *const PamHandle,
         user: *mut *const c_char,
         prompt: *const c_char,
+    ) -> c_int;
+
+    fn pam_get_item(
+        pamh: *const PamHandle,
+        item_type: c_int,
+        item: *mut *const std::ffi::c_void,
     ) -> c_int;
 }
 
@@ -43,6 +51,14 @@ pub unsafe extern "C" fn pam_sm_authenticate(
         return PAM_IGNORE;
     }
 
+    let mut service_ptr: *const std::ffi::c_void = std::ptr::null();
+    let s_res = pam_get_item(pamh, PAM_SERVICE, &mut service_ptr);
+    let service = if s_res == PAM_SUCCESS && !service_ptr.is_null() {
+        CStr::from_ptr(service_ptr as *const c_char).to_string_lossy().to_string()
+    } else {
+        "sudo".to_string()
+    };
+
     let username = CStr::from_ptr(user_ptr).to_string_lossy().to_string();
     let timeout = parse_timeout(argc, argv, 15).max(10);
 
@@ -55,20 +71,37 @@ pub unsafe extern "C" fn pam_sm_authenticate(
     };
 
     rt.block_on(async move {
-        authenticate_user(&username, timeout).await
+        authenticate_user(&username, &service, timeout).await
     })
 }
 
-async fn authenticate_user(username: &str, timeout_secs: u32) -> c_int {
+async fn authenticate_user(username: &str, service: &str, timeout_secs: u32) -> c_int {
     let client = SingularityClient::new();
-    let reason = format!("Authorize authentication for {}", username);
+    let reason = format!("{}: {}", service, username);
     let watcher = KeyboardWatcher::new();
 
     eprint!("\r📱 Touch fingerprint on POCO F5 (or press Enter for password)... ");
     let _ = std::io::stderr().flush();
 
     tokio::select! {
-        auth_res = client.authenticate_biometric(&reason, timeout_secs) => {
+        auth_res = client.authenticate_biometric_streaming(&reason, timeout_secs, |event| {
+            match event {
+                singularity_client::AuthProgressEvent::Ready => {
+                    eprint!("\r\x1b[2K📱 Touch fingerprint on POCO F5 (or press Enter for password)... ");
+                    let _ = std::io::stderr().flush();
+                }
+                singularity_client::AuthProgressEvent::FingerMismatch { attempt } => {
+                    eprint!("\r\x1b[2K📱 Touch fingerprint on POCO F5... \x1b[33m❌ Try again (Attempt {}/5)\x1b[0m", attempt);
+                    let _ = std::io::stderr().flush();
+                }
+                singularity_client::AuthProgressEvent::SensorLockout { duration_secs, .. } => {
+                    eprintln!("\r\x1b[2K📱 Sensor locked out for {}s. Switching to password...", duration_secs);
+                }
+                singularity_client::AuthProgressEvent::Cancelled => {
+                    eprintln!("\r\x1b[2K📱 Biometric authentication canceled on phone.");
+                }
+            }
+        }) => {
             if let Ok(true) = auth_res {
                 eprintln!("\r\x1b[2K📱 Touch fingerprint on POCO F5... \x1b[32m✔ Approved!\x1b[0m");
                 PAM_SUCCESS

@@ -1,4 +1,5 @@
 mod assets;
+mod auth_cache;
 mod biometric;
 mod clipboard;
 mod config;
@@ -50,6 +51,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let has_root = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let active_device = Arc::new(tokio::sync::RwLock::new(config.adb_address.clone()));
 
+    let auth_cache = auth_cache::new_auth_cache();
+
     let server = IpcServer::bind(
         &socket_path,
         clip_tx.clone(),
@@ -58,6 +61,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Arc::clone(&storage_tunnel),
         Arc::clone(&active_mount),
         Arc::clone(&has_root),
+        Arc::clone(&auth_cache),
     )?;
 
     let _watcher_handle = match wayland::start_wayland_watcher(clip_tx.clone()) {
@@ -65,7 +69,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(e) => { tracing::warn!(target: "daemon", error = %e, "Wayland clipboard watcher unavailable"); None }
     };
 
-    let _lock_handle = lock_watcher::start_lock_watcher(Arc::clone(&active_device));
+    let _lock_handle = lock_watcher::start_lock_watcher(Arc::clone(&active_device), auth_cache);
 
     let supervisor = supervisor::start_supervisor(
         config.adb_address,

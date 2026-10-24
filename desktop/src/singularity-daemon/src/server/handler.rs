@@ -6,6 +6,7 @@ use tokio::sync::broadcast::Sender;
 use tokio::sync::{Mutex, RwLock};
 use singularity_core::FeatureRegistry;
 use singularity_protocol::{IpcRequest, IpcResponse};
+use crate::auth_cache::SharedAuthCache;
 use crate::error::{DaemonError, Result};
 use crate::storage;
 use crate::transport::AdbTunnel;
@@ -18,6 +19,7 @@ pub async fn handle_client(
     storage_tunnel: Arc<Mutex<Option<AdbTunnel>>>,
     active_mount: Arc<Mutex<Option<PathBuf>>>,
     has_root: Arc<std::sync::atomic::AtomicBool>,
+    auth_cache: SharedAuthCache,
 ) -> Result<()> {
     let mut len_buf = [0u8; 4];
     stream.read_exact(&mut len_buf).await?;
@@ -88,24 +90,13 @@ pub async fn handle_client(
             IpcResponse::Ok
         }
         IpcRequest::AuthenticateBiometric { reason, timeout_secs } => {
-            tracing::info!(target: "ipc_server", %reason, timeout_secs, "Processing biometric request");
-            match crate::transport::resolve_or_wait_device(&active_device, 6).await {
-                Some(dev) => match crate::biometric::authenticate(&dev, &reason, timeout_secs).await {
-                    Ok(true) => IpcResponse::AuthResult { success: true, reason: None },
-                    Ok(false) => IpcResponse::AuthResult {
-                        success: false,
-                        reason: Some("Fingerprint rejected or cancelled".into()),
-                    },
-                    Err(e) => IpcResponse::AuthResult {
-                        success: false,
-                        reason: Some(format!("Biometric error: {}", e)),
-                    },
-                },
-                None => IpcResponse::AuthResult {
-                    success: false,
-                    reason: Some("No Android device detected on network".into()),
-                },
-            }
+            crate::server::auth_handler::handle_biometric(
+                &mut stream,
+                reason,
+                timeout_secs,
+                &auth_cache,
+                &active_device,
+            ).await?
         }
         IpcRequest::CancelBiometric => {
             tracing::info!(target: "ipc_server", "Processing cancel biometric request");
@@ -118,11 +109,8 @@ pub async fn handle_client(
         IpcRequest::Custom { .. } => IpcResponse::Ok,
     };
 
-    let resp_bytes = serde_json::to_vec(&response)
-        .map_err(|e| DaemonError::Protocol(e.into()))?;
-    let resp_len = (resp_bytes.len() as u32).to_be_bytes();
-
-    stream.write_all(&resp_len).await?;
+    let resp_bytes = serde_json::to_vec(&response).map_err(|e| DaemonError::Protocol(e.into()))?;
+    stream.write_all(&(resp_bytes.len() as u32).to_be_bytes()).await?;
     stream.write_all(&resp_bytes).await?;
     stream.flush().await?;
 

@@ -24,6 +24,16 @@ pub enum IpcRequest {
     },
 }
 
+/// Real-time biometric authentication progress events streamed from companion device.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "event", content = "data")]
+pub enum AuthProgressEvent {
+    Ready,
+    FingerMismatch { attempt: u32 },
+    SensorLockout { duration_secs: u32, message: String },
+    Cancelled,
+}
+
 /// Response returned by the background daemon to a requesting client.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "status", content = "data")]
@@ -32,9 +42,12 @@ pub enum IpcResponse {
     Status(Vec<FeatureStatus>),
     StorageMounted { mount_point: String },
     StorageUnmounted,
+    AuthProgress(AuthProgressEvent),
     AuthResult {
         success: bool,
         reason: Option<String>,
+        #[serde(default)]
+        failed_attempts: u32,
     },
     Custom(serde_json::Value),
     Error(String),
@@ -80,6 +93,7 @@ mod tests {
         let resp = IpcResponse::AuthResult {
             success: true,
             reason: None,
+            failed_attempts: 0,
         };
         let resp_json = serde_json::to_string(&resp).unwrap();
         assert!(resp_json.contains("AuthResult"));

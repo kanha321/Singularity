@@ -8,7 +8,7 @@ pub mod status;
 pub use self::device::DeviceInfo;
 pub use self::error::{ProtocolError, Result};
 pub use self::event::DeviceEvent;
-pub use self::ipc::{IpcEvent, IpcRequest, IpcResponse};
+pub use self::ipc::{AuthProgressEvent, IpcEvent, IpcRequest, IpcResponse};
 pub use self::scrcpy::{
     decode_device_msg, encode_set_clipboard, ScrcpyDeviceMsg,
     TYPE_ACK_CLIPBOARD, TYPE_CLIPBOARD_EVENT, TYPE_SET_CLIPBOARD,

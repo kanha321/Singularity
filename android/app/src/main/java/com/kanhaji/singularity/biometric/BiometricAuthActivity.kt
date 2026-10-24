@@ -19,6 +19,8 @@ class BiometricAuthActivity : FragmentActivity() {
         const val EXTRA_TITLE = "extra_title"
         const val EXTRA_REASON = "extra_reason"
         const val EXTRA_IS_UNLOCK = "extra_is_unlock"
+        const val EXTRA_IS_LOGIN = "extra_is_login"
+        const val EXTRA_POWER_ACTION = "extra_power_action"
 
         private var activeActivity = java.lang.ref.WeakReference<BiometricAuthActivity?>(null)
 
@@ -65,6 +67,21 @@ class BiometricAuthActivity : FragmentActivity() {
             )
         }
 
+        val isUnlock = intent.getBooleanExtra(EXTRA_IS_UNLOCK, false)
+        val isLogin = intent.getBooleanExtra(EXTRA_IS_LOGIN, false)
+        val settings = com.kanhaji.singularity.feature.auth.data.AuthSettingsManager.settings.value
+
+        if (isUnlock && settings.unlockMode == com.kanhaji.singularity.feature.auth.model.AuthMode.DENY) {
+            android.widget.Toast.makeText(this, "Unlocking with phone is restricted", android.widget.Toast.LENGTH_SHORT).show()
+            dismissAndFinish()
+            return
+        }
+        if (isLogin && settings.loginMode == com.kanhaji.singularity.feature.auth.model.AuthMode.DENY) {
+            android.widget.Toast.makeText(this, "Logging in with phone is restricted", android.widget.Toast.LENGTH_SHORT).show()
+            dismissAndFinish()
+            return
+        }
+
         val title = intent.getStringExtra(EXTRA_TITLE) ?: "Singularity Security"
         val reason = intent.getStringExtra(EXTRA_REASON) ?: "Host Authentication"
 
@@ -106,6 +123,12 @@ class BiometricAuthActivity : FragmentActivity() {
             .setNegativeButtonText("Cancel")
             .build()
 
+        var failedAttemptsCount = 0
+        val isUnlock = intent.getBooleanExtra(EXTRA_IS_UNLOCK, false)
+        val isLogin = intent.getBooleanExtra(EXTRA_IS_LOGIN, false)
+        val powerAction = intent.getStringExtra(EXTRA_POWER_ACTION)
+        val isPamAuth = !isUnlock && !isLogin && (powerAction == null)
+
         val prompt = BiometricPrompt(
             this,
             executor,
@@ -114,10 +137,18 @@ class BiometricAuthActivity : FragmentActivity() {
                     super.onAuthenticationSucceeded(result)
                     isPromptActive = false
                     biometricPrompt = null
-                    Log.i(TAG, "Native biometric authentication SUCCEEDED")
-                    AppBridgeService.reportBiometricResult(true, null)
-                    if (intent.getBooleanExtra(EXTRA_IS_UNLOCK, false)) {
+                    Log.i(TAG, "Native biometric authentication SUCCEEDED (failed attempts: $failedAttemptsCount)")
+                    if (isPamAuth) {
+                        AppBridgeService.reportBiometricResult(true, null, failedAttemptsCount)
+                    }
+                    if (isUnlock) {
                         AppBridgeService.requestPcUnlock()
+                    }
+                    if (isLogin) {
+                        AppBridgeService.requestPcLogin()
+                    }
+                    powerAction?.let { action ->
+                        AppBridgeService.requestPowerAction(action)
                     }
                     AppBridgeService.dismissPcLockedNotification(this@BiometricAuthActivity)
                     setResult(Activity.RESULT_OK)
@@ -129,21 +160,23 @@ class BiometricAuthActivity : FragmentActivity() {
                     isPromptActive = false
                     biometricPrompt = null
                     Log.w(TAG, "Native biometric authentication ERROR [$errorCode]: $errString")
-                    val isUnlock = intent.getBooleanExtra(EXTRA_IS_UNLOCK, false)
+                    val isLockout = errorCode == BiometricPrompt.ERROR_LOCKOUT || errorCode == BiometricPrompt.ERROR_LOCKOUT_PERMANENT
+                    if (isPamAuth && isLockout) {
+                        AppBridgeService.reportBiometricProgress("sensor_lockout", failedAttemptsCount, errString.toString())
+                    }
                     if (errorCode == BiometricPrompt.ERROR_USER_CANCELED ||
                         errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON ||
                         errorCode == BiometricPrompt.ERROR_CANCELED
                     ) {
-                        Log.i(TAG, "Prompt dismissed by user/system; keeping auth request active for app retry")
-                        if (isUnlock) {
-                            AppBridgeService.showPcLockedNotification(this@BiometricAuthActivity)
-                        } else {
+                        if (isPamAuth) {
+                            Log.i(TAG, "Prompt dismissed by user/system; keeping auth request active for app retry")
+                            AppBridgeService.reportBiometricProgress("cancelled", failedAttemptsCount)
                             AppBridgeService.onBiometricPromptDismissed(this@BiometricAuthActivity)
+                        } else if (isUnlock) {
+                            AppBridgeService.showPcLockedNotification(this@BiometricAuthActivity)
                         }
-                    } else {
-                        if (!isUnlock) {
-                            AppBridgeService.reportBiometricResult(false, errString.toString())
-                        }
+                    } else if (isPamAuth) {
+                        AppBridgeService.reportBiometricResult(false, errString.toString(), failedAttemptsCount, isLockout)
                     }
                     setResult(Activity.RESULT_CANCELED)
                     dismissAndFinish()
@@ -151,12 +184,19 @@ class BiometricAuthActivity : FragmentActivity() {
 
                 override fun onAuthenticationFailed() {
                     super.onAuthenticationFailed()
-                    Log.d(TAG, "Fingerprint not recognized, waiting for retry")
+                    failedAttemptsCount++
+                    Log.d(TAG, "Fingerprint not recognized (attempt $failedAttemptsCount)")
+                    if (isPamAuth) {
+                        AppBridgeService.reportBiometricProgress("finger_mismatch", failedAttemptsCount)
+                    }
                 }
             }
         )
 
         this.biometricPrompt = prompt
         prompt.authenticate(promptInfo)
+        if (isPamAuth) {
+            AppBridgeService.reportBiometricProgress("auth_ready", 0)
+        }
     }
 }

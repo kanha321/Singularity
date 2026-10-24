@@ -1,4 +1,5 @@
 pub mod handler;
+pub mod auth_handler;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -6,6 +7,7 @@ use tokio::net::UnixListener;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::{Mutex, RwLock};
 use singularity_core::FeatureRegistry;
+use crate::auth_cache::SharedAuthCache;
 use crate::error::{DaemonError, Result};
 use crate::transport::AdbTunnel;
 
@@ -17,6 +19,7 @@ pub struct IpcServer {
     storage_tunnel: Arc<Mutex<Option<AdbTunnel>>>,
     active_mount: Arc<Mutex<Option<PathBuf>>>,
     has_root: Arc<std::sync::atomic::AtomicBool>,
+    auth_cache: SharedAuthCache,
 }
 
 impl IpcServer {
@@ -28,6 +31,7 @@ impl IpcServer {
         storage_tunnel: Arc<Mutex<Option<AdbTunnel>>>,
         active_mount: Arc<Mutex<Option<PathBuf>>>,
         has_root: Arc<std::sync::atomic::AtomicBool>,
+        auth_cache: SharedAuthCache,
     ) -> Result<Self> {
         let path = path.as_ref();
         if path.exists() {
@@ -49,6 +53,7 @@ impl IpcServer {
             storage_tunnel,
             active_mount,
             has_root,
+            auth_cache,
         })
     }
 
@@ -62,6 +67,7 @@ impl IpcServer {
                     let storage_tunnel = Arc::clone(&self.storage_tunnel);
                     let active_mount = Arc::clone(&self.active_mount);
                     let has_root = Arc::clone(&self.has_root);
+                    let auth_cache = Arc::clone(&self.auth_cache);
 
                     tokio::spawn(async move {
                         if let Err(e) = handler::handle_client(
@@ -72,6 +78,7 @@ impl IpcServer {
                             storage_tunnel,
                             active_mount,
                             has_root,
+                            auth_cache,
                         )
                         .await
                         {
@@ -98,6 +105,7 @@ mod tests {
         let storage_tunnel = Arc::new(Mutex::new(None));
         let active_mount = Arc::new(Mutex::new(None));
         let has_root = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let auth_cache = crate::auth_cache::new_auth_cache();
         let temp_dir = tempfile::tempdir().unwrap();
         let socket_path = temp_dir.path().join("test_singularity.sock");
         let server = IpcServer::bind(
@@ -108,6 +116,7 @@ mod tests {
             storage_tunnel,
             active_mount,
             has_root,
+            auth_cache,
         );
         assert!(server.is_ok());
         assert!(socket_path.exists());

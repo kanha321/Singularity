@@ -3,7 +3,17 @@ use tokio::process::Command;
 use crate::error::{DaemonError, Result};
 use crate::transport::AdbTunnel;
 
-pub async fn authenticate(adb_address: &str, reason: &str, timeout_secs: u32) -> Result<bool> {
+use singularity_protocol::AuthProgressEvent;
+
+pub async fn authenticate<F>(
+    adb_address: &str,
+    reason: &str,
+    timeout_secs: u32,
+    mut on_event: F,
+) -> Result<(bool, u32, Option<String>)>
+where
+    F: FnMut(AuthProgressEvent) + Send,
+{
     let _ = Command::new("adb")
         .args([
             "-s", adb_address,
@@ -18,9 +28,12 @@ pub async fn authenticate(adb_address: &str, reason: &str, timeout_secs: u32) ->
     let (read_half, mut write_half) = stream.into_split();
     let mut reader = BufReader::new(read_half);
 
+    let action_type = crate::auth_cache::get_action_type(reason);
     let request = serde_json::json!({
         "action": "authenticate",
         "reason": reason,
+        "auth_action": action_type,
+        "action_type": action_type,
         "timeout_secs": timeout_secs,
     });
     let mut req_line = serde_json::to_string(&request)
@@ -31,14 +44,49 @@ pub async fn authenticate(adb_address: &str, reason: &str, timeout_secs: u32) ->
     write_half.flush().await?;
 
     let mut resp_line = String::new();
-    reader.read_line(&mut resp_line).await?;
+    loop {
+        resp_line.clear();
+        let bytes_read = reader.read_line(&mut resp_line).await?;
+        if bytes_read == 0 {
+            return Err(DaemonError::Io(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "Connection closed before auth completed",
+            )));
+        }
+        let trimmed = resp_line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
 
-    tracing::info!(target: "biometric", resp = %resp_line.trim(), "AppBridge biometric response received");
+        tracing::info!(target: "biometric", resp = %trimmed, "AppBridge biometric message");
+        let val: serde_json::Value = serde_json::from_str(trimmed)
+            .map_err(|e| DaemonError::Protocol(e.into()))?;
 
-    let val: serde_json::Value = serde_json::from_str(&resp_line)
-        .map_err(|e| DaemonError::Protocol(e.into()))?;
+        if let Some(event) = val.get("event").and_then(|e| e.as_str()) {
+            match event {
+                "auth_ready" => on_event(AuthProgressEvent::Ready),
+                "finger_mismatch" => {
+                    let attempt = val.get("attempt").and_then(|a| a.as_u64()).unwrap_or(1) as u32;
+                    on_event(AuthProgressEvent::FingerMismatch { attempt });
+                }
+                "sensor_lockout" => {
+                    let duration = val.get("duration_secs").and_then(|d| d.as_u64()).unwrap_or(30) as u32;
+                    let msg = val.get("message").and_then(|m| m.as_str()).unwrap_or("Sensor lockout").to_string();
+                    on_event(AuthProgressEvent::SensorLockout { duration_secs: duration, message: msg });
+                }
+                "cancelled" => on_event(AuthProgressEvent::Cancelled),
+                _ => {}
+            }
+            continue;
+        }
 
-    Ok(val.get("status").and_then(|s| s.as_str()) == Some("success"))
+        if let Some(status) = val.get("status").and_then(|s| s.as_str()) {
+            let success = status == "success";
+            let failed_attempts = val.get("failed_attempts").and_then(|a| a.as_u64()).unwrap_or(0) as u32;
+            let reason_msg = val.get("reason").and_then(|r| r.as_str()).map(|s| s.to_string());
+            return Ok((success, failed_attempts, reason_msg));
+        }
+    }
 }
 
 pub async fn cancel(adb_address: &str) -> Result<()> {
