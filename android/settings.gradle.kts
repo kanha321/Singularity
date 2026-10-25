@@ -27,7 +27,7 @@ dependencyResolutionManagement {
 rootProject.name = "singularity"
 include(":app")
 
-includeBuild("/mnt/c/Users/CelestialSepian/AndroidStudioProjects/core") {
+includeBuild("/home/kanhaji/Projects/core-framework") {
     name = "shared-core"
     dependencySubstitution {
         substitute(module("com.github.kanha321:core-framework")).using(project(":core"))

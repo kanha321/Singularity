@@ -11,9 +11,20 @@ pub struct LockActions {
     pub power: Option<String>,
 }
 
+fn get_local_ip_for(target: &str) -> Option<String> {
+    let host = target.split(':').next()?;
+    if host == "auto" || host.is_empty() {
+        return None;
+    }
+    let socket = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
+    socket.connect(format!("{}:80", host)).ok()?;
+    Some(socket.local_addr().ok()?.ip().to_string())
+}
+
 pub struct AppBridgeStream {
     reader: BufReader<tokio::net::unix::OwnedReadHalf>,
     writer: tokio::net::unix::OwnedWriteHalf,
+    adb_address: String,
 }
 
 impl AppBridgeStream {
@@ -40,7 +51,7 @@ impl AppBridgeStream {
         };
 
         let (r, w) = stream.into_split();
-        Ok(Self { reader: BufReader::new(r), writer: w })
+        Ok(Self { reader: BufReader::new(r), writer: w, adb_address: adb_address.to_string() })
     }
 
     #[allow(dead_code)]
@@ -59,9 +70,13 @@ impl AppBridgeStream {
         logged_in: bool,
         auth_cache: &SharedAuthCache,
     ) -> Result<LockActions> {
-        let req = serde_json::json!({
-            "action": "lock_state", "locked": locked, "logged_in": logged_in, "isLoggedIn": logged_in
+        let mut req = serde_json::json!({
+            "action": "lock_state", "locked": locked, "logged_in": logged_in, "isLoggedIn": logged_in,
+            "file_server_port": 8920
         });
+        if let Some(ip) = get_local_ip_for(&self.adb_address) {
+            req["file_server_host"] = serde_json::json!(ip);
+        }
         let mut req_str = serde_json::to_string(&req).map_err(|e| DaemonError::Protocol(e.into()))?;
         req_str.push('\n');
         self.writer.write_all(req_str.as_bytes()).await?;

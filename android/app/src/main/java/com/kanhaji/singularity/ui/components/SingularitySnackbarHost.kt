@@ -63,9 +63,9 @@ fun SingularitySnackbarHost(
             .padding(start = 16.dp, end = 16.dp, bottom = bottomOffset)
     ) {
         SurfaceCard(
-            color = Color.Transparent,
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
             borderWidth = 1.dp,
-            borderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+            borderColor = MaterialTheme.colorScheme.primary,
             cornerRadius = 18.dp,
             elevation = 0.dp,
             modifier = Modifier.fillMaxWidth()

@@ -74,6 +74,7 @@ class AppBridgeService : Service() {
         val pendingLogoutRequest = AtomicBoolean(false)
         val pendingLoginRequest = AtomicBoolean(false)
         val pendingPowerAction = AtomicReference<String?>(null)
+        val fileServerUrl = MutableStateFlow<String>("http://127.0.0.1:8920")
         val lastPacketReceivedMs = AtomicLong(0L)
         val activeConnections = AtomicInteger(0)
         val isActivityVisible = AtomicBoolean(false)
@@ -613,6 +614,11 @@ class AppBridgeService : Service() {
                         val stateChanged = pcLockState.value != stateStr
                         pcLockState.value = stateStr
                         pcLoginState.value = loggedIn
+                        val host = json.optString("file_server_host", "")
+                        val port = json.optInt("file_server_port", 8920)
+                        if (host.isNotEmpty()) {
+                            fileServerUrl.value = "http://$host:$port"
+                        }
                         if (stateChanged) {
                             if (locked) {
                                 showPcLockedPrompt()

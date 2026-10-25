@@ -13,6 +13,12 @@ pub struct KeyboardWatcher {
     stop: Arc<AtomicBool>,
 }
 
+impl Default for KeyboardWatcher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl KeyboardWatcher {
     pub fn new() -> Self {
         Self {
@@ -28,7 +34,7 @@ impl KeyboardWatcher {
 
             if is_cli {
                 let tty_fd = unsafe {
-                    libc::open(b"/dev/tty\0".as_ptr() as *const libc::c_char, libc::O_RDONLY | libc::O_NONBLOCK)
+                    libc::open(c"/dev/tty".as_ptr(), libc::O_RDONLY | libc::O_NONBLOCK)
                 };
                 if tty_fd >= 0 {
                     raw_fds.push((tty_fd, true));

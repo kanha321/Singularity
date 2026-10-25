@@ -57,8 +57,14 @@ pub fn start_supervisor(
                         model: session.device_name.clone(),
                         android_version: "16 (Evolution X)".into(),
                     };
-                    let root_bridge = if simulate_non_root { None } else { Some(Arc::new(RootBridge::new())) };
-                    let shell_bridge = Arc::new(ShellBridge::new());
+                    let root_bridge = if simulate_non_root {
+                        None
+                    } else {
+                        let runner = Arc::new(crate::transport::AdbRootRunner::new(&target_device));
+                        Some(Arc::new(RootBridge::with_runner(runner)))
+                    };
+                    let shell_runner = Arc::new(crate::transport::AdbShellRunner::new(&target_device));
+                    let shell_bridge = Arc::new(ShellBridge::with_runner(shell_runner));
                     let app_bridge = Some(Arc::new(singularity_core::bridge::AppBridge::new()));
                     let device = DeviceBridge::new(info, root_bridge, shell_bridge, app_bridge);
 

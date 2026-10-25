@@ -22,6 +22,11 @@ pub fn mount_phone<P: AsRef<Path>>(
     let mount_point = mount_point.as_ref();
     let identity_file = identity_file.as_ref();
 
+    // Preemptively clean up any stale FUSE handle from a previous crashed session
+    let _ = Command::new("fusermount3")
+        .args(["-u", "-z", mount_point.to_string_lossy().as_ref()])
+        .status();
+
     if !mount_point.exists() {
         std::fs::create_dir_all(mount_point).map_err(|e| {
             DaemonError::Storage(format!("Failed to create mount directory: {}", e))
@@ -85,7 +90,7 @@ pub fn unmount_phone<P: AsRef<Path>>(mount_point: P) -> Result<()> {
     );
 
     let _ = Command::new("fusermount3")
-        .args(["-u", mount_point.to_string_lossy().as_ref()])
+        .args(["-u", "-z", mount_point.to_string_lossy().as_ref()])
         .status();
 
     Ok(())

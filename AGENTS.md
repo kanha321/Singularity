@@ -11,6 +11,9 @@ Before executing ANY task, proposing ANY design, writing ANY code, or replying t
 3. `docs/coding_rules.md` — One-way crate dependencies, one-file-one-job, and thin front-door pattern.
 4. `docs/unit_testing_rules.md` — Unit tests co-located at bottom of files, hardware/transport mocking (`FakeBridge`, `FakeTransport`), and deterministic tests.
 5. `docs/refactoring_rules.md` — 150-line limit, build script warning enforcement, splitting steps, and exemptions.
+6. `docs/android-testing.md` — Android TDD methodology, Host JVM testing standards, Koin testing, and coroutines/StateFlow testing.
+7. `docs/dependencies.md` — Complete catalogue of system, runtime, build, and hardware dependencies across Arch Linux and Android.
+8. `docs/features.md` — Record of all functional features currently implemented in the app and what they do.
 
 ---
 
@@ -67,10 +70,23 @@ Before executing ANY task, proposing ANY design, writing ANY code, or replying t
 ---
 
 ## 6. Unit Testing Standards
-- **Unit Tests:** Always co-located at the bottom of the source file (`#[cfg(test)] mod tests`).
+### A. Desktop / Rust Crate Standards
+- **Co-location:** Unit tests must be co-located at the bottom of the source file (`#[cfg(test)] mod tests`).
 - **Integration Tests:** Cross-module pipeline tests go into crate `tests/` directories.
 - **Transport Mocking:** Keep bridges fakeable (`FakeBridge`, `FakeTransport`) for deterministic offline testing without requiring a live device.
-- **Descriptive Naming:** `<function>_<expected_behavior>[_<condition>]`.
+- **Naming:** `<function>_<expected_behavior>[_<condition>]`.
+
+### B. Android Companion App (TDD & Host JVM Standards)
+- **Test-Driven Development (TDD):** For all feature logic, reducers, and data management, write unit tests *before* or alongside implementation. Never push untested business logic to the phone. Follow `docs/android-testing.md`.
+- **Host JVM First (`app/src/test/`):** Pure models, immutable reducers (`FsSelectionState`, `FsViewOptions`), utilities (`FsPathUtils`), and reactive state managers (`FsSelectionManager`) MUST live in `app/src/test/` and run on the host JVM in milliseconds without requiring an emulator or connected phone.
+- **Koin Over Hilt:** Never introduce Hilt or annotation processing. Use constructor injection directly, or use `koin-test` (`KoinTest`, `startKoin { modules(...) }`) and `verify()` for DI graph validation.
+- **Coroutines & StateFlow Testing:** Always use `kotlinx-coroutines-test` (`runTest`, `MainDispatcherRule`) and `app.cash.turbine:turbine` to verify StateFlow emissions.
+- **Naming Standard:** Strictly follow `<function>_<condition>_<expectedResult>`.
+- **Verification Command:** Always verify with:
+  ```bash
+  JAVA_HOME=/usr/lib/jvm/java-21-openjdk ANDROID_HOME=/home/kanhaji/Android/Sdk ./gradlew testDebugUnitTest
+  ```
+- **Deployment Boundary (No Automated UI Taps/Screenshots):** The moment you install the APK (`adb install -r ...`) and launch the app (`adb shell am start ...`), the deployment step is complete. NEVER run automated UI exploration, synthetic touch events (`adb shell input tap / keyevent`), or screencap captures unless the user explicitly asks for them.
 
 ---
 
@@ -105,4 +121,24 @@ Before executing ANY task, proposing ANY design, writing ANY code, or replying t
 - **Unconditional Full-Screen Intent:** High-priority alerts must set `.setFullScreenIntent(pendingIntent, true)` unconditionally (do not gate on `isInteractive`).
 - **Auto-Decay vs Sticky Categories:** Do NOT use `CATEGORY_CALL` or `CATEGORY_ALARM` unless you want the heads-up banner to remain pinned permanently (SystemUI disables auto-dismiss decay for calls and alarms). Use `CATEGORY_EVENT` or `CATEGORY_REMINDER` with `IMPORTANCE_HIGH`, `PRIORITY_HIGH`, and `.setTimeoutAfter(...)` so the banner pops up and naturally auto-decays back into the shade after ~5 seconds.
 - **Channel ID Invalidation:** Android caches notification channel importance. Whenever modifying notification channel parameters, always bump the channel ID string (e.g. `auth_alerts_v2`) to force the OS to register fresh channel policies.
+
+---
+
+## 11. Third-Party Tool & Dependency Tracking (`docs/dependencies.md`)
+- **Mandatory Documentation on Introduction:** Whenever ANY new third-party CLI tool, system package, dynamic library, or external daemon (e.g. `7z`, `scrcpy`, `ripgrep`, `v4l2loopback`, `pipewire`, `sshfs`) is introduced or utilized in the project and is not already documented in `docs/dependencies.md`, you MUST immediately document it in `docs/dependencies.md`.
+- **Categorization Standard:** Record the tool under its appropriate classification:
+  - **`depends`**: Strictly required for core runtime execution.
+  - **`optdepends`**: Optional tools that unlock specific feature modules (must implement graceful capability detection).
+  - **`makedepends`**: Build-time tools, compilers, and development headers.
+  - **Android System / Hardware**: Specific hardware sensors, Android permissions, or KernelSU bridges.
+- **Trigger Condition:** Only update `docs/dependencies.md` when a *new* tool/dependency is introduced; do not touch it during ordinary maintenance if no new dependencies were added.
+
+---
+
+## 12. Feature Catalog Maintenance (`docs/features.md`)
+- **Permanent Feature Record:** Maintain `docs/features.md` strictly as the functional record of what features the application has and what each feature does (capabilities, mechanisms, and interactions).
+- **No Changelogs or Fix Logs:** NEVER use `docs/features.md` to log bug fixes, troubleshooting notes, or refactoring history.
+- **Update on Feature Addition:** Whenever a new user-facing or platform feature is completed and validated, document it under its appropriate functional section in `docs/features.md`.
+
+
 

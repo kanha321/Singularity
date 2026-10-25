@@ -1,7 +1,9 @@
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int};
 
-pub fn parse_timeout(argc: c_int, argv: *const *const c_char, default_timeout: u32) -> u32 {
+/// # Safety
+/// Caller must ensure `argv` points to valid memory or is null.
+pub unsafe fn parse_timeout(argc: c_int, argv: *const *const c_char, default_timeout: u32) -> u32 {
     if argc <= 0 || argv.is_null() {
         return default_timeout;
     }
@@ -28,11 +30,11 @@ mod tests {
     fn parse_timeout_finds_value() {
         let arg = CString::new("timeout=15").unwrap();
         let argv = [arg.as_ptr()];
-        assert_eq!(parse_timeout(1, argv.as_ptr(), 10), 15);
+        assert_eq!(unsafe { parse_timeout(1, argv.as_ptr(), 10) }, 15);
     }
 
     #[test]
     fn parse_timeout_uses_default() {
-        assert_eq!(parse_timeout(0, std::ptr::null(), 10), 10);
+        assert_eq!(unsafe { parse_timeout(0, std::ptr::null(), 10) }, 10);
     }
 }

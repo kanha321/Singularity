@@ -47,5 +47,9 @@ enum class PowerAction(
 
     companion object {
         val allActions = listOf(REBOOT, SHUTDOWN, SUSPEND, HIBERNATE, LOGOUT)
+        val loggedOutActions = listOf(REBOOT, SHUTDOWN)
+
+        fun actionsFor(isLoggedIn: Boolean): List<PowerAction> =
+            if (isLoggedIn) allActions else loggedOutActions
     }
 }

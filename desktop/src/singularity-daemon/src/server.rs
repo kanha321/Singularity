@@ -23,6 +23,7 @@ pub struct IpcServer {
 }
 
 impl IpcServer {
+    #[allow(clippy::too_many_arguments)]
     pub fn bind<P: AsRef<Path>>(
         path: P,
         clip_tx: Sender<String>,

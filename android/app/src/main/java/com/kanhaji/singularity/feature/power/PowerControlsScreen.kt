@@ -23,7 +23,6 @@ import com.kanhaji.core.shell.ui.ScreenScaffold
 import com.kanhaji.core.shell.ui.SmoothCollapsingTopBar
 import com.kanhaji.core.shell.ui.rememberCollapsingTopBarConnection
 import com.kanhaji.singularity.biometric.BiometricAuthActivity
-import com.kanhaji.singularity.feature.home.components.ConnectionStatusDot
 import com.kanhaji.singularity.feature.home.components.FeatureSectionHeader
 import com.kanhaji.singularity.feature.power.components.PowerGridCard
 import com.kanhaji.singularity.feature.power.model.PowerAction
@@ -33,6 +32,7 @@ import com.kanhaji.singularity.ui.components.AppSnackbar
 @Composable
 fun PowerControlsScreen() {
     val isPcConnected by AppBridgeService.isPcConnected.collectAsState()
+    val isLoggedIn by AppBridgeService.pcLoginState.collectAsState()
     val context = LocalContext.current
     val navigator = LocalNavigator.current
     val gridState = rememberLazyGridState()
@@ -50,9 +50,7 @@ fun PowerControlsScreen() {
                 title = "Power Controls",
                 showBack = true,
                 onBack = { navigator.pop() },
-                actions = {
-                    ConnectionStatusDot(isPcConnected = isPcConnected)
-                },
+                actions = {},
                 state = collapsingState
             )
         }
@@ -73,7 +71,7 @@ fun PowerControlsScreen() {
             }
 
             items(
-                items = PowerAction.allActions,
+                items = PowerAction.actionsFor(isLoggedIn),
                 key = { it.actionId },
                 span = { action ->
                     if (action == PowerAction.LOGOUT) GridItemSpan(2) else GridItemSpan(1)

@@ -5,8 +5,8 @@ pub mod shell;
 
 pub use self::app::AppBridge;
 pub use self::device::DeviceBridge;
-pub use self::root::RootBridge;
-pub use self::shell::ShellBridge;
+pub use self::root::{RootBridge, RootCommandRunner};
+pub use self::shell::{ShellBridge, ShellCommandRunner};
 
 use async_trait::async_trait;
 use crate::error::Result;

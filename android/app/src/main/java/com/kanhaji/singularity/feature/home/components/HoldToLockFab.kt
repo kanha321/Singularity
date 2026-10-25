@@ -41,9 +41,17 @@ fun HoldToLockFab(
     val progress = remember { Animatable(0f) }
 
     val trackColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
-    val progressColor = Color(0xFFF87171)
-    val containerColor = if (isPcConnected) Color(0xFF1E222D) else MaterialTheme.colorScheme.surfaceVariant
-    val iconTint = if (isPcConnected) Color(0xFFE2E8F0) else Color(0xFF64748B)
+    val progressColor = MaterialTheme.colorScheme.primary
+    val containerColor = if (isPcConnected) {
+        MaterialTheme.colorScheme.surfaceContainerHigh
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant
+    }
+    val iconTint = if (isPcConnected) {
+        MaterialTheme.colorScheme.onSurface
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+    }
 
     val animatedScale by animateFloatAsState(
         targetValue = if (isPressed) 0.94f else 1f,

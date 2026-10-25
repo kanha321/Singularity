@@ -1,17 +1,32 @@
 use async_trait::async_trait;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use crate::bridge::Bridge;
 use crate::error::{CoreError, Result};
+
+#[async_trait]
+pub trait RootCommandRunner: Send + Sync {
+    async fn exec_su(&self, command: &str) -> Result<String>;
+}
 
 /// Specialized bridge for generic UID 0 (Root / KernelSU) privileged operations.
 pub struct RootBridge {
     is_active: AtomicBool,
+    runner: Option<Arc<dyn RootCommandRunner>>,
 }
 
 impl RootBridge {
     pub fn new() -> Self {
         Self {
             is_active: AtomicBool::new(true),
+            runner: None,
+        }
+    }
+
+    pub fn with_runner(runner: Arc<dyn RootCommandRunner>) -> Self {
+        Self {
+            is_active: AtomicBool::new(true),
+            runner: Some(runner),
         }
     }
 
@@ -23,7 +38,10 @@ impl RootBridge {
                 message: "Bridge is shut down".into(),
             });
         }
-        tracing::debug!(target: "root_bridge", command, "Executing privileged root command");
+        if let Some(runner) = &self.runner {
+            return runner.exec_su(command).await;
+        }
+        tracing::debug!(target: "root_bridge", command, "Executing privileged root command (mock)");
         Ok(String::new())
     }
 
@@ -35,7 +53,12 @@ impl RootBridge {
                 message: "Bridge is shut down".into(),
             });
         }
-        tracing::debug!(target: "root_bridge", path, value, "Writing to sysfs node");
+        if let Some(runner) = &self.runner {
+            let cmd = format!("echo '{}' > '{}'", value.replace('\'', "'\\''"), path);
+            runner.exec_su(&cmd).await?;
+            return Ok(());
+        }
+        tracing::debug!(target: "root_bridge", path, value, "Writing to sysfs node (mock)");
         Ok(())
     }
 
@@ -47,7 +70,11 @@ impl RootBridge {
                 message: "Bridge is shut down".into(),
             });
         }
-        tracing::debug!(target: "root_bridge", path, "Reading from sysfs node");
+        if let Some(runner) = &self.runner {
+            let cmd = format!("cat '{}'", path);
+            return runner.exec_su(&cmd).await;
+        }
+        tracing::debug!(target: "root_bridge", path, "Reading from sysfs node (mock)");
         Ok(String::new())
     }
 }
@@ -79,6 +106,14 @@ impl Bridge for RootBridge {
 mod tests {
     use super::*;
 
+    struct FakeRunner;
+    #[async_trait]
+    impl RootCommandRunner for FakeRunner {
+        async fn exec_su(&self, command: &str) -> Result<String> {
+            Ok(format!("executed: {}", command))
+        }
+    }
+
     #[tokio::test]
     async fn root_bridge_verifies_active_state_for_operations() {
         let bridge = RootBridge::new();
@@ -91,5 +126,12 @@ mod tests {
         assert!(!bridge.is_healthy().await);
         assert!(bridge.exec_su("id").await.is_err());
         assert!(bridge.write_sysfs("/sys/class/test", "1").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn root_bridge_with_runner_delegates_command() {
+        let bridge = RootBridge::with_runner(Arc::new(FakeRunner));
+        let res = bridge.exec_su("whoami").await.unwrap();
+        assert_eq!(res, "executed: whoami");
     }
 }

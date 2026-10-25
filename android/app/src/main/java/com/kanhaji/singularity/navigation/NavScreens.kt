@@ -39,3 +39,11 @@ object PowerControlsNavScreen : NavScreen {
         PowerControlsScreen()
     }
 }
+
+@Serializable
+data class FileBrowserNavScreen(val path: String = "~") : NavScreen {
+    @Composable
+    override fun Content() {
+        com.kanhaji.singularity.feature.files.FileBrowserScreen(path)
+    }
+}

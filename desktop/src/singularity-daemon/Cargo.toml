@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 singularity-core.workspace = true
 singularity-protocol.workspace = true
+async-trait.workspace = true
 tokio = { workspace = true, features = ["full"] }
 tokio-util.workspace = true
 wl-clipboard-rs.workspace = true

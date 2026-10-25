@@ -65,14 +65,20 @@ pub async fn authorize_key_on_device(pub_key: &str, device: &DeviceBridge) -> Re
 
 pub async fn start_device_sshd(port: u16, device: &DeviceBridge) -> Result<()> {
     let root = device.root()?;
-    let keygen_cmd = "mkdir -p /data/ssh && chmod 700 /data/ssh && if [ ! -f /data/ssh/ssh_host_ed25519_key ]; then /product/bin/ssh-keygen -t ed25519 -N '' -f /data/ssh/ssh_host_ed25519_key && chmod 600 /data/ssh/ssh_host_ed25519_key; fi";
+    let keygen_cmd = "mkdir -p /data/ssh && chmod 700 /data/ssh && if [ ! -f /data/ssh/ssh_host_ed25519_key ]; then if [ -x /product/bin/ssh-keygen ]; then /product/bin/ssh-keygen -t ed25519 -N '' -f /data/ssh/ssh_host_ed25519_key; elif [ -x /data/data/com.termux/files/usr/bin/ssh-keygen ]; then env LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib /data/data/com.termux/files/usr/bin/ssh-keygen -t ed25519 -N '' -f /data/ssh/ssh_host_ed25519_key; fi && chmod 600 /data/ssh/ssh_host_ed25519_key; fi";
     root.exec_su(keygen_cmd).await?;
 
     let sshd_cmd = format!(
-        "pkill -9 sshd 2>/dev/null; env LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib /data/data/com.termux/files/usr/bin/sshd -p {0} -h /data/ssh/ssh_host_ed25519_key -o 'ListenAddress 127.0.0.1' -o 'AuthorizedKeysFile /data/ssh/authorized_keys' -o 'StrictModes no' -o 'PasswordAuthentication no' -o 'Subsystem sftp /data/data/com.termux/files/usr/libexec/sftp-server'",
+        "if [ ! -x /data/data/com.termux/files/usr/bin/sshd ]; then echo 'TERMUX_SSHD_NOT_FOUND' && exit 1; fi; if ! pidof sshd >/dev/null 2>&1; then env LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib /data/data/com.termux/files/usr/bin/sshd -p {0} -h /data/ssh/ssh_host_ed25519_key -o 'ListenAddress 127.0.0.1' -o 'AuthorizedKeysFile /data/ssh/authorized_keys' -o 'StrictModes no' -o 'PasswordAuthentication no' -o 'Subsystem sftp /data/data/com.termux/files/usr/libexec/sftp-server'; fi",
         port
     );
-    root.exec_su(&sshd_cmd).await?;
+    let output = root.exec_su(&sshd_cmd).await?;
+    if output.contains("TERMUX_SSHD_NOT_FOUND") {
+        return Err(CoreError::BridgeFailure {
+            bridge: "Storage",
+            message: "Termux OpenSSH not found on device (/data/data/com.termux/files/usr/bin/sshd)".into(),
+        });
+    }
     tracing::info!(target: "storage_handler", port, "Device root OpenSSH SFTP daemon active on loopback");
     Ok(())
 }

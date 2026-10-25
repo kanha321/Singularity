@@ -23,6 +23,7 @@ import com.kanhaji.core.shell.ui.rememberCollapsingTopBarConnection
 import com.kanhaji.singularity.feature.home.components.*
 import com.kanhaji.singularity.feature.home.model.HomeFeatureCatalog
 import com.kanhaji.singularity.navigation.AuthSettingsNavScreen
+import com.kanhaji.singularity.navigation.FileBrowserNavScreen
 import com.kanhaji.singularity.navigation.PowerControlsNavScreen
 import com.kanhaji.singularity.navigation.SettingsNavScreen
 import com.kanhaji.singularity.service.AppBridgeService
@@ -34,6 +35,7 @@ fun HomeScreenContent() {
     val isPcConnected by AppBridgeService.isPcConnected.collectAsState()
     val pcLockState by AppBridgeService.pcLockState.collectAsState()
     val isPcLocked = pcLockState == "locked"
+    val isLoggedIn by AppBridgeService.pcLoginState.collectAsState()
 
     val context = LocalContext.current
     val navigator = LocalNavigator.current
@@ -69,6 +71,7 @@ fun HomeScreenContent() {
         floatingActionButton = {
             HomeLockFab(
                 isPcConnected = isPcConnected,
+                isLoggedIn = isLoggedIn,
                 isPcLocked = isPcLocked
             )
         }
@@ -98,10 +101,13 @@ fun HomeScreenContent() {
             items(
                 HomeFeatureCatalog.featureCards(
                     onOpenAuth = { navigator.navigate(AuthSettingsNavScreen) },
-                    onOpenPower = { navigator.navigate(PowerControlsNavScreen) }
+                    onOpenPower = { navigator.navigate(PowerControlsNavScreen) },
+                    onOpenFiles = { navigator.navigate(FileBrowserNavScreen()) }
                 ),
                 key = { it.id },
-                span = { GridItemSpan(1) }
+                span = { item ->
+                    if (item.id == "files_feature") GridItemSpan(2) else GridItemSpan(1)
+                }
             ) { FeatureGridCard(it) }
         }
     }

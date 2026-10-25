@@ -11,6 +11,7 @@ use crate::error::{DaemonError, Result};
 use crate::storage;
 use crate::transport::AdbTunnel;
 
+#[allow(clippy::too_many_arguments)]
 pub async fn handle_client(
     mut stream: UnixStream,
     clip_tx: Sender<String>,
@@ -43,35 +44,42 @@ pub async fn handle_client(
         }
         IpcRequest::MountStorage { remote_path } => {
             let is_root = has_root.load(std::sync::atomic::Ordering::SeqCst);
-            let default_path = singularity_core::features::storage::config::default_remote_path(is_root);
-            let raw_remote = remote_path.unwrap_or_else(|| default_path.to_string());
-            let target_remote = singularity_core::features::storage::config::canonical_remote_path(&raw_remote);
-            let mount_point = PathBuf::from("/mnt/phone");
-            let identity_file = dirs::config_dir()
-                .unwrap_or_else(|| PathBuf::from("/tmp"))
-                .join("singularity/storage_id_ed25519");
+            if !is_root {
+                IpcResponse::Error("Device is not rooted (KernelSU/su required for transparent storage mount)".into())
+            } else if let Some(adb_address) = crate::transport::resolve_or_wait_device(&active_device, 3).await {
+                if let Err(e) = storage::ensure_device_storage_ready(&adb_address, 2222).await {
+                    IpcResponse::Error(format!("Failed to prepare phone storage daemon: {}", e))
+                } else {
+                    let default_path = singularity_core::features::storage::config::default_remote_path(is_root);
+                    let raw_remote = remote_path.unwrap_or_else(|| default_path.to_string());
+                    let target_remote = singularity_core::features::storage::config::canonical_remote_path(&raw_remote);
+                    let mount_point = PathBuf::from("/mnt/phone");
+                    let identity_file = dirs::config_dir()
+                        .unwrap_or_else(|| PathBuf::from("/tmp"))
+                        .join("singularity/storage_id_ed25519");
 
-            let adb_address = crate::transport::resolve_or_wait_device(&active_device, 2).await
-                .unwrap_or_else(|| active_device.try_read().map(|g| g.clone()).unwrap_or_else(|_| "auto".into()));
-
-            match AdbTunnel::forward_tcp(&adb_address, 2222).await {
-                Ok(tunnel) => {
-                    let port = tunnel.local_port();
-                    *storage_tunnel.lock().await = Some(tunnel);
-                    match storage::mount_phone(port, &target_remote, &mount_point, &identity_file) {
-                        Ok(()) => {
-                            *active_mount.lock().await = Some(mount_point.clone());
-                            IpcResponse::StorageMounted {
-                                mount_point: mount_point.to_string_lossy().to_string(),
+                    match AdbTunnel::forward_tcp(&adb_address, 2222).await {
+                        Ok(tunnel) => {
+                            let port = tunnel.local_port();
+                            *storage_tunnel.lock().await = Some(tunnel);
+                            match storage::mount_phone(port, &target_remote, &mount_point, &identity_file) {
+                                Ok(()) => {
+                                    *active_mount.lock().await = Some(mount_point.clone());
+                                    IpcResponse::StorageMounted {
+                                        mount_point: mount_point.to_string_lossy().to_string(),
+                                    }
+                                }
+                                Err(e) => {
+                                    *storage_tunnel.lock().await = None;
+                                    IpcResponse::Error(format!("Failed to mount storage: {}", e))
+                                }
                             }
                         }
-                        Err(e) => {
-                            *storage_tunnel.lock().await = None;
-                            IpcResponse::Error(format!("Failed to mount storage: {}", e))
-                        }
+                        Err(e) => IpcResponse::Error(format!("Failed to forward ADB port for storage: {}", e)),
                     }
                 }
-                Err(e) => IpcResponse::Error(format!("Failed to forward ADB port for storage: {}", e)),
+            } else {
+                IpcResponse::Error("No Android device detected on network".into())
             }
         }
         IpcRequest::UnmountStorage => {

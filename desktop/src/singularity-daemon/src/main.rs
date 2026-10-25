@@ -5,6 +5,7 @@ mod clipboard;
 mod config;
 mod deployer;
 mod error;
+mod file_server;
 mod lock_watcher;
 mod server;
 mod singleton;
@@ -70,6 +71,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let _lock_handle = lock_watcher::start_lock_watcher(Arc::clone(&active_device), auth_cache);
+    let _file_server_handle = file_server::start_file_server(Arc::clone(&active_device), 8920);
 
     let supervisor = supervisor::start_supervisor(
         config.adb_address,

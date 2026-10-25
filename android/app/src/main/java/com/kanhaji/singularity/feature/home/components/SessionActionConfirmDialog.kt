@@ -1,11 +1,10 @@
 package com.kanhaji.singularity.feature.home.components
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Logout
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
+import com.kanhaji.singularity.ui.components.SingularityConfirmDialog
 
 enum class SessionConfirmAction {
     LOCK,
@@ -28,36 +27,18 @@ fun SessionActionConfirmDialog(
         "Are you sure you want to log out and terminate your desktop session?"
     }
     val confirmText = if (isLock) "Lock" else "Log Out"
-    val confirmColor = if (isLock) Color(0xFFFBBF24) else Color(0xFFF87171)
+    val icon = if (isLock) Icons.Outlined.Lock else Icons.AutoMirrored.Outlined.Logout
 
-    AlertDialog(
+    SingularityConfirmDialog(
+        title = title,
+        icon = icon,
+        message = message,
+        confirmText = confirmText,
+        isDestructive = !isLock,
         onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surface,
-        titleContentColor = MaterialTheme.colorScheme.onSurface,
-        textContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-        shape = RoundedCornerShape(20.dp),
-        title = {
-            Text(text = title, style = MaterialTheme.typography.titleLarge)
-        },
-        text = {
-            Text(text = message, style = MaterialTheme.typography.bodyMedium)
-        },
-        confirmButton = {
-            OutlinedButton(
-                onClick = {
-                    onConfirm(action)
-                    onDismiss()
-                },
-                border = BorderStroke(1.dp, confirmColor),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = confirmColor)
-            ) {
-                Text(confirmText)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+        onConfirm = {
+            onConfirm(action)
+            onDismiss()
         }
     )
 }
