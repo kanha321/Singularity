@@ -18,7 +18,7 @@ pub async fn handle_client(
     registry: Arc<RwLock<FeatureRegistry>>,
     active_device: Arc<RwLock<String>>,
     storage_tunnel: Arc<Mutex<Option<AdbTunnel>>>,
-    active_mount: Arc<Mutex<Option<PathBuf>>>,
+    active_mounts: Arc<Mutex<Vec<PathBuf>>>,
     has_root: Arc<std::sync::atomic::AtomicBool>,
     auth_cache: SharedAuthCache,
 ) -> Result<()> {
@@ -47,35 +47,38 @@ pub async fn handle_client(
             if !is_root {
                 IpcResponse::Error("Device is not rooted (KernelSU/su required for transparent storage mount)".into())
             } else if let Some(adb_address) = crate::transport::resolve_or_wait_device(&active_device, 3).await {
-                if let Err(e) = storage::ensure_device_storage_ready(&adb_address, 2222).await {
-                    IpcResponse::Error(format!("Failed to prepare phone storage daemon: {}", e))
-                } else {
-                    let default_path = singularity_core::features::storage::config::default_remote_path(is_root);
-                    let raw_remote = remote_path.unwrap_or_else(|| default_path.to_string());
-                    let target_remote = singularity_core::features::storage::config::canonical_remote_path(&raw_remote);
+                if let Some(custom) = remote_path {
+                    let target_remote = singularity_core::features::storage::config::canonical_remote_path(&custom);
                     let mount_point = PathBuf::from("/mnt/phone");
                     let identity_file = dirs::config_dir()
                         .unwrap_or_else(|| PathBuf::from("/tmp"))
                         .join("singularity/storage_id_ed25519");
 
-                    match AdbTunnel::forward_tcp(&adb_address, 2222).await {
-                        Ok(tunnel) => {
-                            let port = tunnel.local_port();
-                            *storage_tunnel.lock().await = Some(tunnel);
-                            match storage::mount_phone(port, &target_remote, &mount_point, &identity_file) {
-                                Ok(()) => {
-                                    *active_mount.lock().await = Some(mount_point.clone());
-                                    IpcResponse::StorageMounted {
-                                        mount_point: mount_point.to_string_lossy().to_string(),
+                    if let Err(e) = storage::ensure_device_storage_ready(&adb_address, 2222).await {
+                        IpcResponse::Error(format!("Failed to prepare phone storage daemon: {}", e))
+                    } else {
+                        match AdbTunnel::forward_tcp(&adb_address, 2222).await {
+                            Ok(tunnel) => {
+                                let port = tunnel.local_port();
+                                *storage_tunnel.lock().await = Some(tunnel);
+                                match storage::mount_phone(port, &target_remote, &mount_point, &identity_file) {
+                                    Ok(()) => {
+                                        active_mounts.lock().await.push(mount_point.clone());
+                                        IpcResponse::StorageMounted { mount_point: mount_point.to_string_lossy().to_string() }
+                                    }
+                                    Err(e) => {
+                                        *storage_tunnel.lock().await = None;
+                                        IpcResponse::Error(format!("Failed to mount storage: {}", e))
                                     }
                                 }
-                                Err(e) => {
-                                    *storage_tunnel.lock().await = None;
-                                    IpcResponse::Error(format!("Failed to mount storage: {}", e))
-                                }
                             }
+                            Err(e) => IpcResponse::Error(format!("Failed to forward ADB port for storage: {}", e)),
                         }
-                        Err(e) => IpcResponse::Error(format!("Failed to forward ADB port for storage: {}", e)),
+                    }
+                } else {
+                    match storage::mount_dual_storage(&adb_address, Arc::clone(&active_mounts), Arc::clone(&storage_tunnel)).await {
+                        Ok(points) => IpcResponse::StorageMounted { mount_point: points },
+                        Err(e) => IpcResponse::Error(format!("Failed to mount storage: {}", e)),
                     }
                 }
             } else {
@@ -83,7 +86,8 @@ pub async fn handle_client(
             }
         }
         IpcRequest::UnmountStorage => {
-            if let Some(mount_point) = active_mount.lock().await.take() {
+            let mounts = active_mounts.lock().await.drain(..).collect::<Vec<_>>();
+            for mount_point in mounts {
                 let _ = storage::unmount_phone(&mount_point);
             }
             *storage_tunnel.lock().await = None;
@@ -113,6 +117,19 @@ pub async fn handle_client(
                 let _ = crate::biometric::cancel(&dev).await;
             }
             IpcResponse::Ok
+        }
+        IpcRequest::OpenUrl { url } => {
+            match crate::transport::resolve_or_wait_device(&active_device, 2).await {
+                Some(addr) => {
+                    let runner = Arc::new(crate::transport::AdbShellRunner::new(&addr));
+                    let shell = singularity_core::bridge::ShellBridge::with_runner(runner);
+                    match singularity_core::features::browser::launch_url_on_device(&shell, &url).await {
+                        Ok(_) => IpcResponse::Ok,
+                        Err(e) => IpcResponse::Error(e.to_string()),
+                    }
+                }
+                None => IpcResponse::Error("No Android device detected on network".into()),
+            }
         }
         IpcRequest::Custom { .. } => IpcResponse::Ok,
     };

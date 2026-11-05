@@ -1,12 +1,18 @@
+pub mod adapter;
+pub mod adapters;
+pub mod detector;
 pub mod session;
+pub mod socket2;
 pub mod stream;
 
+pub use adapter::LockerAdapter;
+pub use detector::resolve_adapter;
 pub use session::*;
 pub use stream::*;
 
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::RwLock;
+use tokio::sync::{Notify, RwLock};
 use crate::auth_cache::SharedAuthCache;
 
 pub fn start_lock_watcher(
@@ -14,6 +20,10 @@ pub fn start_lock_watcher(
     auth_cache: SharedAuthCache,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
+        let adapter = resolve_adapter(None).await;
+        let notify = Arc::new(Notify::new());
+        let _socket2 = socket2::start_socket2_listener(Arc::clone(&notify));
+
         let mut last_state = None;
         let mut client: Option<AppBridgeStream> = None;
         let mut last_addr = String::new();
@@ -30,13 +40,19 @@ pub fn start_lock_watcher(
                 client = None;
             }
 
-            let current_locked = query_pc_screen_locked().await;
+            let current_locked = query_pc_screen_locked(&*adapter).await;
             let current_logged_in = query_pc_logged_in().await;
             let current = (current_locked, current_logged_in);
 
             if last_state != Some(current) {
                 last_state = Some(current);
-                tracing::info!(target: "lock_watcher", is_locked = current_locked, is_logged_in = current_logged_in, "PC session state changed");
+                tracing::info!(
+                    target: "lock_watcher",
+                    adapter = adapter.name(),
+                    is_locked = current_locked,
+                    is_logged_in = current_logged_in,
+                    "PC session state updated"
+                );
             }
 
             if client.is_none() {
@@ -46,8 +62,14 @@ pub fn start_lock_watcher(
             if let Some(ref mut stream) = client {
                 match stream.exchange(current_locked, current_logged_in, &auth_cache).await {
                     Ok(actions) => {
+                        if let Some(url) = actions.open_url {
+                            tracing::info!(target: "lock_watcher", %url, "Opening URL on desktop requested by device");
+                            tokio::spawn(async move {
+                                let _ = tokio::process::Command::new("xdg-open").arg(&url).status().await;
+                            });
+                        }
                         if actions.lock {
-                            trigger_pc_lock().await;
+                            trigger_pc_lock(&*adapter).await;
                         }
                         if actions.logout {
                             trigger_pc_logout().await;
@@ -57,8 +79,8 @@ pub fn start_lock_watcher(
                                 "reboot" => trigger_pc_reboot().await,
                                 "shutdown" => trigger_pc_shutdown().await,
                                 "logout" => trigger_pc_logout().await,
-                                "suspend" => trigger_pc_suspend().await,
-                                "hibernate" => trigger_pc_hibernate().await,
+                                "suspend" => trigger_pc_suspend(&*adapter).await,
+                                "hibernate" => trigger_pc_hibernate(&*adapter).await,
                                 other => tracing::warn!(target: "lock_watcher", "Unknown power action: {}", other),
                             }
                         }
@@ -67,9 +89,9 @@ pub fn start_lock_watcher(
                             let denied = cache.is_denied("unlock") || cache.is_snoozed();
                             drop(cache);
                             if denied {
-                                tracing::warn!(target: "lock_watcher", "Ignored PC unlock request: unlock is denied or snoozed");
+                                tracing::warn!(target: "lock_watcher", "Ignored unlock request: unlock is denied or snoozed");
                             } else {
-                                trigger_pc_unlock().await;
+                                trigger_pc_unlock(&*adapter).await;
                             }
                         }
                     }
@@ -80,7 +102,10 @@ pub fn start_lock_watcher(
                 }
             }
 
-            tokio::time::sleep(Duration::from_millis(500)).await;
+            tokio::select! {
+                _ = notify.notified() => {},
+                _ = tokio::time::sleep(Duration::from_millis(1000)) => {},
+            }
         }
     })
 }
@@ -108,5 +133,6 @@ mod tests {
         assert!(!actions.lock);
         assert!(!actions.logout);
         assert_eq!(actions.power, None);
+        assert_eq!(actions.open_url, None);
     }
 }

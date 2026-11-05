@@ -2,6 +2,8 @@
 
 This document is the authoritative record of all functional features currently implemented in the **Singularity** ecosystem (Arch Linux Desktop Host & Android Companion App), describing what each feature is and what it does.
 
+For a detailed breakdown of the exact scope, boundaries, and portability level of each feature (Shell-specific, Wayland, Systemd, Linux Kernel, or Android requirements), see [Feature Scope & Portability Catalog](file:///home/kanhaji/Projects/singularity/docs/feature_scopes.md).
+
 ---
 
 ## 1. Biometric Authentication & Linux PAM Integration (`pam-singularity`)
@@ -42,6 +44,17 @@ This document is the authoritative record of all functional features currently i
 - **Contextual Power Grid Filtering:**
   - When logged out, the Power Controls screen automatically filters out session-dependent actions (`Logout`, `Suspend`, `Hibernate`), strictly displaying **Reboot** and **Shutdown**.
   - When logged in, the full hardware lifecycle suite (**Reboot**, **Shutdown**, **Suspend**, **Hibernate**, and **Logout**) is accessible.
+
+### 2.4 Hybrid Modular Locker Adapter & Hyprland Socket2 Streaming
+- **What it does:** Provides universal, shell-agnostic desktop locking, unlocking, and real-time state detection across any Wayland or Hyprland environment.
+- **Key Capabilities:**
+  - **Multi-Shell Locker Adapters:** Pluggable adapter interface (`LockerAdapter`) supporting:
+    - **Caelestia Adapter:** Direct IPC integration via `caelestia shell lock {isLocked, lock, unlock}`.
+    - **DMS Adapter:** Native IPC integration via `dms ipc call lock {isLocked, lock, unlock}`.
+    - **Hyprlock Adapter (Universal Wayland):** Hyprland layer-surface namespace inspection (`hyprctl layers`), `loginctl lock-session`, and PAM Pre-Auth virtual return key wake.
+    - **Logind Adapter:** Standard fallback querying `org.freedesktop.ScreenSaver` and `loginctl show-session -p LockedHint`.
+  - **Dynamic Environment Detection:** Automatically detects running desktop shells (`Caelestia` $\rightarrow$ `DMS` $\rightarrow$ `Hyprland/Hyprlock` $\rightarrow$ `Logind`), seamlessly adapting when switching compositor profiles.
+  - **Real-Time Hyprland Socket2 Streaming:** Eliminates polling lag by subscribing directly to `/run/user/<UID>/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock`, instantaneously streaming layer lock/unlock transitions to the Android companion app.
 
 ---
 
@@ -126,7 +139,20 @@ This document is the authoritative record of all functional features currently i
   - Vector icon placeholder with smooth crossfade to preview upon load completion and seamless fallback on error or non-media files.
   - Integrated into both `FsListCard` and the 3-dot context menu bottom sheet (`FsItemContextMenuSheet`) with enlarged 48dp preview header.
 
+### 3.11 Transparent Phone Storage & Root Filesystem Dual Auto-Mounting
+- **What it does:** Automatically mounts both the connected phone's internal storage (`/data/media/0` / `/sdcard`) at `/mnt/phone` and the complete phone root filesystem (`/`) at `/mnt/root` upon connection, and cleanly unmounts both on disconnect.
+- **How it works:**
+  - `singularity-daemon`'s device supervisor detects rooted phone presence (KernelSU UID 0).
+  - Starts or verifies the phone's loopback Termux OpenSSH SFTP daemon on port `2222` with host public key authorization in `/data/ssh/authorized_keys`.
+  - Forwards port `2222` over an ADB TCP tunnel and asynchronously mounts:
+    1. **Internal Storage (`/data/media/0`):** Mounted to `/mnt/phone` (providing instant access to user downloads, camera photos, documents, and media).
+    2. **Root Filesystem (`/`):** Mounted to `/mnt/root` (providing full access to system partitions, apps, configurations, and data).
+  - Background async execution guarantees zero connection latency for the clipboard highway and IPC server.
+  - Automatically unmounts all active mounts via `fusermount3 -u -z` when the phone disconnects or the daemon terminates.
+  - Can be toggled via `--auto-mount=false` in `DaemonConfig` or managed on-demand via `singularity mount` / `singularity unmount`.
+
 ---
+
 
 ## 4. In-App Remote Media Streaming & File Viewers
 
@@ -176,3 +202,24 @@ This document is the authoritative record of all functional features currently i
 
 ### 6.3 Systemd User Service Supervision
 - **What it does:** `singularity-daemon.service` runs as a systemd user service on Arch Linux, starting on login and restarting automatically on failure.
+
+---
+
+## 7. Browser Session Continuity (Web Extension & CLI)
+
+### 7.1 Single-Click Web Extension Tab Transfer
+- **What it does:** Instantly continues active desktop browsing sessions on the Android phone with a single click.
+- **How it works:** A Manifest V3 browser extension captures the active tab URL and posts it to `singularity-daemon`'s local HTTP API (`http://127.0.0.1:8920/api/browser/open`).
+- **Tactile Badge Status:** Toolbar icon displays real-time badge feedback (`✓` in green upon device launch, `!` in red on error or offline state).
+- **Context Menus:** Right-click context menus allow sending the entire page or specific hyperlinks ("Send page to phone", "Send link to phone").
+
+### 7.2 Chrome Priority with Graceful Default Fallback
+- **What it does:** Opens transferred links in Google Chrome on Android, seamlessly falling back to the user's default browser if Chrome is missing.
+- **Underlying Mechanism:** Executed via ADB `ShellBridge` under UID 2000 using an atomic AOSP ActivityManager intent:
+  ```bash
+  am start -a android.intent.action.VIEW -d '<url>' -p com.android.chrome >/dev/null 2>&1 || am start -a android.intent.action.VIEW -d '<url>'
+  ```
+
+### 7.3 CLI & IPC URL Dispatcher
+- **What it does:** Allows sending links to open on the phone directly from the Arch Linux terminal, scripts, or window manager keybinds.
+- **Command:** `singularity open-url <url>` (or `singularity open <url>`).

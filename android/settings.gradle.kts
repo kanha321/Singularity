@@ -21,17 +21,20 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        maven { url = uri("https://jitpack.io") }
     }
 }
 
 rootProject.name = "singularity"
 include(":app")
 
-includeBuild("/home/kanhaji/Projects/core-framework") {
-    name = "shared-core"
-    dependencySubstitution {
-        substitute(module("com.github.kanha321:core-framework")).using(project(":core"))
-        substitute(module("com.github.kanha321:feature-settings")).using(project(":feature:settings"))
+if (file("/home/kanhaji/Projects/core-framework").exists()) {
+    includeBuild("/home/kanhaji/Projects/core-framework") {
+        name = "shared-core"
+        dependencySubstitution {
+            substitute(module("com.github.kanha321:core-framework")).using(project(":core"))
+            substitute(module("com.github.kanha321:feature-settings")).using(project(":feature:settings"))
+        }
     }
 }
  

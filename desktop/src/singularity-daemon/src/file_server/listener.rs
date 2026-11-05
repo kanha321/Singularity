@@ -33,8 +33,9 @@ pub fn start_file_server(active_device: Arc<RwLock<String>>, port: u16) -> tokio
         loop {
             match listener.accept().await {
                 Ok((stream, _peer)) => {
+                    let dev = Arc::clone(&active_device);
                     tokio::spawn(async move {
-                        let _ = super::router::handle_http_connection(stream).await;
+                        let _ = super::router::handle_http_connection(stream, dev).await;
                     });
                 }
                 Err(e) => {

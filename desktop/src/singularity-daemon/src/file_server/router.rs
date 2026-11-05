@@ -1,42 +1,17 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
+use tokio::sync::RwLock;
 use super::fs_ops::{list_directory, resolve_path};
 use super::stream::stream_file_response;
+#[allow(unused_imports)]
+pub use super::query::{parse_query, url_decode};
 
-pub fn url_decode(input: &str) -> String {
-    let mut out = Vec::new();
-    let bytes = input.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(val) = u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""), 16) {
-                out.push(val);
-                i += 3;
-                continue;
-            }
-        } else if bytes[i] == b'+' {
-            out.push(b' ');
-            i += 1;
-            continue;
-        }
-        out.push(bytes[i]);
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).to_string()
-}
-
-pub fn parse_query(query_str: &str) -> HashMap<String, String> {
-    let mut params = HashMap::new();
-    for part in query_str.split('&') {
-        if let Some((k, v)) = part.split_once('=') {
-            params.insert(url_decode(k), url_decode(v));
-        }
-    }
-    params
-}
-
-pub async fn handle_http_connection(mut stream: TcpStream) -> std::io::Result<()> {
+pub async fn handle_http_connection(
+    mut stream: TcpStream,
+    active_device: Arc<RwLock<String>>,
+) -> std::io::Result<()> {
     let (read_half, mut write_half) = stream.split();
     let mut reader = BufReader::new(read_half);
     let mut request_line = String::new();
@@ -124,6 +99,15 @@ pub async fn handle_http_connection(mut stream: TcpStream) -> std::io::Result<()
         }
         ("POST", "/api/fs/archive/extract") | ("POST", "/api/fs/archive/compress") => {
             super::archive_router::handle_archive_post(route, &headers, &mut reader, &mut write_half).await?;
+        }
+        ("OPTIONS", "/api/browser/open") | ("OPTIONS", "/api/desktop/open") => {
+            super::browser_router::handle_browser_options(&mut write_half).await?;
+        }
+        ("POST", "/api/browser/open") => {
+            super::browser_router::handle_browser_post(&headers, &mut reader, &mut write_half, &active_device).await?;
+        }
+        ("POST", "/api/desktop/open") => {
+            super::browser_router::handle_desktop_open_post(&headers, &mut reader, &mut write_half).await?;
         }
         _ => {
             let resp = "HTTP/1.1 404 Not Found\r\nContent-Length: 9\r\nConnection: close\r\n\r\nNot Found";

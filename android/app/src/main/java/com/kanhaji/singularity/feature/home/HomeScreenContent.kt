@@ -36,6 +36,7 @@ fun HomeScreenContent() {
     val pcLockState by AppBridgeService.pcLockState.collectAsState()
     val isPcLocked = pcLockState == "locked"
     val isLoggedIn by AppBridgeService.pcLoginState.collectAsState()
+    var showShareDialog by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     val navigator = LocalNavigator.current
@@ -102,13 +103,21 @@ fun HomeScreenContent() {
                 HomeFeatureCatalog.featureCards(
                     onOpenAuth = { navigator.navigate(AuthSettingsNavScreen) },
                     onOpenPower = { navigator.navigate(PowerControlsNavScreen) },
-                    onOpenFiles = { navigator.navigate(FileBrowserNavScreen()) }
+                    onOpenFiles = { navigator.navigate(FileBrowserNavScreen()) },
+                    onOpenShare = { showShareDialog = true }
                 ),
                 key = { it.id },
                 span = { item ->
                     if (item.id == "files_feature") GridItemSpan(2) else GridItemSpan(1)
                 }
             ) { FeatureGridCard(it) }
+        }
+
+        if (showShareDialog) {
+            SendLinkDialog(
+                onDismiss = { showShareDialog = false },
+                onSuccess = { AppSnackbar.show("Opening on PC 💻") }
+            )
         }
     }
 }

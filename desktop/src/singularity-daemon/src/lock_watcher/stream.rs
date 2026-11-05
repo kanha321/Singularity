@@ -9,6 +9,7 @@ pub struct LockActions {
     pub lock: bool,
     pub logout: bool,
     pub power: Option<String>,
+    pub open_url: Option<String>,
 }
 
 fn get_local_ip_for(target: &str) -> Option<String> {
@@ -100,6 +101,7 @@ impl AppBridgeStream {
             lock: val.get("request_lock").and_then(|u| u.as_bool()).unwrap_or(false),
             logout: val.get("request_logout").and_then(|u| u.as_bool()).unwrap_or(false),
             power: val.get("request_power").and_then(|p| p.as_str()).map(|s| s.to_string()),
+            open_url: val.get("request_open_url").and_then(|u| u.as_str()).map(|s| s.to_string()),
         })
     }
 }

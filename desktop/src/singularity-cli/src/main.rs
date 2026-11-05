@@ -44,6 +44,12 @@ enum Commands {
         #[command(subcommand)]
         action: CallAction,
     },
+
+    /// Open a URL or hyperlink on connected Android device
+    OpenUrl {
+        /// Target URL or link to open
+        url: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -108,6 +114,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("Call ended");
             }
         },
+        Commands::OpenUrl { url } => {
+            client.open_url(&url).await?;
+            println!("✅ Dispatched URL to Android: {}", url);
+        }
     }
 
     Ok(())

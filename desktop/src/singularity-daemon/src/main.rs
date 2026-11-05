@@ -48,7 +48,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let registry = Arc::new(tokio::sync::RwLock::new(reg));
 
     let storage_tunnel = Arc::new(tokio::sync::Mutex::new(None));
-    let active_mount = Arc::new(tokio::sync::Mutex::new(None));
+    let active_mounts = Arc::new(tokio::sync::Mutex::new(Vec::new()));
     let has_root = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let active_device = Arc::new(tokio::sync::RwLock::new(config.adb_address.clone()));
 
@@ -60,7 +60,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Arc::clone(&registry),
         Arc::clone(&active_device),
         Arc::clone(&storage_tunnel),
-        Arc::clone(&active_mount),
+        Arc::clone(&active_mounts),
         Arc::clone(&has_root),
         Arc::clone(&auth_cache),
     )?;
@@ -77,10 +77,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         config.adb_address,
         config.reconnect_interval_secs,
         config.simulate_non_root,
+        config.auto_mount,
         active_device,
         registry,
         clip_tx,
-        Arc::clone(&active_mount),
+        Arc::clone(&active_mounts),
         Arc::clone(&storage_tunnel),
         Arc::clone(&has_root),
     );
@@ -93,7 +94,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    if let Some(mount) = active_mount.lock().await.take() {
+    let mounts = active_mounts.lock().await.drain(..).collect::<Vec<_>>();
+    for mount in mounts {
         let _ = storage::unmount_phone(&mount);
     }
 

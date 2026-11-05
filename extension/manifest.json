@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "Singularity — Send to Phone",
+  "version": "1.0.0",
+  "description": "Instantly send current browser tabs or hyperlinks to your paired Android phone via Singularity.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "Send active tab to phone"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "contextMenus",
+    "notifications",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:8920/*"
+  ],
+  "commands": {
+    "send-active-tab": {
+      "suggested_key": {
+        "default": "Alt+Shift+S",
+        "mac": "Alt+Shift+S"
+      },
+      "description": "Send currently active tab to phone"
+    }
+  }
+}
+

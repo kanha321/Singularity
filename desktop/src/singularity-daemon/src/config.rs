@@ -20,6 +20,10 @@ pub struct DaemonConfig {
     /// Force daemon to simulate a non-rooted device (leaves phone root untouched)
     #[arg(long, env = "SINGULARITY_SIMULATE_NON_ROOT")]
     pub simulate_non_root: bool,
+
+    /// Enable automatic transparent SFTP storage mounting
+    #[arg(long, default_value_t = true)]
+    pub auto_mount: bool,
 }
 
 impl DaemonConfig {
@@ -41,6 +45,7 @@ impl Default for DaemonConfig {
             socket_path: None,
             reconnect_interval_secs: 5,
             simulate_non_root: false,
+            auto_mount: true,
         }
     }
 }

@@ -15,10 +15,11 @@ pub fn start_supervisor(
     configured_address: String,
     reconnect_secs: u64,
     simulate_non_root: bool,
+    auto_mount: bool,
     active_device: Arc<RwLock<String>>,
     registry: Arc<RwLock<FeatureRegistry>>,
     clip_tx: broadcast::Sender<String>,
-    active_mount: Arc<Mutex<Option<PathBuf>>>,
+    active_mounts: Arc<Mutex<Vec<PathBuf>>>,
     storage_tunnel: Arc<Mutex<Option<AdbTunnel>>>,
     has_root: Arc<AtomicBool>,
 ) -> tokio::task::JoinHandle<()> {
@@ -71,6 +72,23 @@ pub fn start_supervisor(
                     has_root.store(device.has_root(), std::sync::atomic::Ordering::SeqCst);
                     registry.write().await.on_connected(&device).await;
 
+                    if auto_mount && device.has_root() {
+                        let mount_target = target_device.clone();
+                        let a_mounts = Arc::clone(&active_mounts);
+                        let s_tunnel = Arc::clone(&storage_tunnel);
+                        tokio::spawn(async move {
+                            if let Err(e) = storage::auto_mount_phone_storage(
+                                &mount_target,
+                                true,
+                                true,
+                                a_mounts,
+                                s_tunnel,
+                            ).await {
+                                tracing::warn!(target: "daemon", error = %e, "Background auto-mount phone storage failed");
+                            }
+                        });
+                    }
+
                     let local_rx = clip_tx.subscribe();
                     let (read_half, write_half) = session.stream.into_split();
                     if let Err(e) = bridge.run(local_rx, read_half, write_half).await {
@@ -82,7 +100,8 @@ pub fn start_supervisor(
                     if configured_address == "auto" {
                         *active_device.write().await = "auto".to_string();
                     }
-                    if let Some(mount) = active_mount.lock().await.take() {
+                    let mounts = active_mounts.lock().await.drain(..).collect::<Vec<_>>();
+                    for mount in mounts {
                         let _ = storage::unmount_phone(&mount);
                     }
                     *storage_tunnel.lock().await = None;

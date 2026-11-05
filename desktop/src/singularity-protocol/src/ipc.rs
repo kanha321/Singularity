@@ -17,6 +17,9 @@ pub enum IpcRequest {
         timeout_secs: u32,
     },
     CancelBiometric,
+    OpenUrl {
+        url: String,
+    },
     Custom {
         feature: String,
         action: String,

@@ -74,6 +74,7 @@ class AppBridgeService : Service() {
         val pendingLogoutRequest = AtomicBoolean(false)
         val pendingLoginRequest = AtomicBoolean(false)
         val pendingPowerAction = AtomicReference<String?>(null)
+        val pendingOpenUrl = AtomicReference<String?>(null)
         val fileServerUrl = MutableStateFlow<String>("http://127.0.0.1:8920")
         val lastPacketReceivedMs = AtomicLong(0L)
         val activeConnections = AtomicInteger(0)
@@ -99,6 +100,7 @@ class AppBridgeService : Service() {
             pendingLogoutRequest.set(false)
             pendingLoginRequest.set(false)
             pendingPowerAction.set(null)
+            pendingOpenUrl.set(null)
             rejectActiveAuth("PC disconnected")
             BiometricAuthActivity.dismissActivePrompt()
             if (context != null) {
@@ -130,6 +132,11 @@ class AppBridgeService : Service() {
         fun requestPowerAction(action: String) {
             pendingPowerAction.set(action)
             Log.i(TAG, "PC power action requested: $action")
+        }
+
+        fun requestOpenUrlOnDesktop(url: String) {
+            pendingOpenUrl.set(url)
+            Log.i(TAG, "PC open URL requested: $url")
         }
 
         fun pushAuthSettings(settings: com.kanhaji.singularity.feature.auth.model.AuthSettings) {
@@ -632,6 +639,7 @@ class AppBridgeService : Service() {
                         val reqLogout = pendingLogoutRequest.getAndSet(false)
                         val reqLogin = pendingLoginRequest.getAndSet(false)
                         val reqPower = pendingPowerAction.getAndSet(null)
+                        val reqOpenUrl = pendingOpenUrl.getAndSet(null)
                         val resp = JSONObject()
                             .put("status", "ok")
                             .put("pc_locked", locked)
@@ -643,6 +651,9 @@ class AppBridgeService : Service() {
                             .put("auth_settings", com.kanhaji.singularity.feature.auth.data.AuthSettingsManager.settings.value.toJson())
                         if (reqPower != null) {
                             resp.put("request_power", reqPower)
+                        }
+                        if (reqOpenUrl != null) {
+                            resp.put("request_open_url", reqOpenUrl)
                         }
                         resp
                     }

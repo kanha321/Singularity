@@ -1,16 +1,15 @@
+use std::sync::Arc;
 use tokio::process::Command;
+use super::adapter::LockerAdapter;
+use super::detector::resolve_adapter;
 
-pub async fn query_pc_screen_locked() -> bool {
-    let out = Command::new("dms").args(["ipc", "call", "lock", "isLocked"]).output().await;
-    match out {
-        Ok(o) => String::from_utf8_lossy(&o.stdout).trim() == "true",
-        Err(_) => {
-            let bus = Command::new("busctl")
-                .args(["--user", "call", "org.freedesktop.ScreenSaver", "/org/freedesktop/ScreenSaver", "org.freedesktop.ScreenSaver", "GetActive"])
-                .output().await;
-            bus.map(|o| String::from_utf8_lossy(&o.stdout).contains("true")).unwrap_or(false)
-        }
-    }
+#[allow(dead_code)]
+pub async fn get_locker_adapter() -> Arc<dyn LockerAdapter> {
+    resolve_adapter(None).await
+}
+
+pub async fn query_pc_screen_locked(adapter: &dyn LockerAdapter) -> bool {
+    adapter.is_locked().await
 }
 
 pub async fn query_pc_logged_in() -> bool {
@@ -23,15 +22,14 @@ pub async fn query_pc_logged_in() -> bool {
     }).unwrap_or(false)
 }
 
-pub async fn trigger_pc_unlock() {
-    tracing::info!(target: "lock_watcher", "Triggering PC screen unlock via DMS");
-    let _ = Command::new("dms").args(["ipc", "call", "lock", "unlock"]).status().await;
+pub async fn trigger_pc_unlock(adapter: &dyn LockerAdapter) {
+    tracing::info!(target: "lock_watcher", adapter = adapter.name(), "Triggering PC screen unlock");
+    let _ = adapter.unlock().await;
 }
 
-pub async fn trigger_pc_lock() {
-    tracing::info!(target: "lock_watcher", "Triggering PC screen lock via DMS & loginctl");
-    let _ = Command::new("dms").args(["ipc", "call", "lock", "lock"]).status().await;
-    let _ = Command::new("loginctl").args(["lock-session"]).status().await;
+pub async fn trigger_pc_lock(adapter: &dyn LockerAdapter) {
+    tracing::info!(target: "lock_watcher", adapter = adapter.name(), "Triggering PC screen lock");
+    let _ = adapter.lock().await;
 }
 
 pub async fn trigger_pc_logout() {
@@ -56,16 +54,16 @@ pub async fn trigger_pc_shutdown() {
     let _ = Command::new("systemctl").arg("poweroff").status().await;
 }
 
-pub async fn trigger_pc_suspend() {
+pub async fn trigger_pc_suspend(adapter: &dyn LockerAdapter) {
     tracing::info!(target: "lock_watcher", "Locking screen and suspending PC");
-    trigger_pc_lock().await;
+    trigger_pc_lock(adapter).await;
     tokio::time::sleep(std::time::Duration::from_millis(300)).await;
     let _ = Command::new("systemctl").arg("suspend").status().await;
 }
 
-pub async fn trigger_pc_hibernate() {
+pub async fn trigger_pc_hibernate(adapter: &dyn LockerAdapter) {
     tracing::info!(target: "lock_watcher", "Locking screen and hibernating PC");
-    trigger_pc_lock().await;
+    trigger_pc_lock(adapter).await;
     tokio::time::sleep(std::time::Duration::from_millis(300)).await;
     let _ = Command::new("systemctl").arg("hibernate").status().await;
 }

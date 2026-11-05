@@ -124,6 +124,11 @@ check_prerequisites() {
 setup_host() {
     log_step "1. Setting up Singularity Daemon & CLI..."
 
+    log_info "Creating transparent storage mount directories (/mnt/phone and /mnt/root)..."
+    sudo mkdir -p /mnt/phone /mnt/root
+    sudo chown "${CURRENT_USER}:${CURRENT_USER}" /mnt/phone /mnt/root
+    log_success "Created and set permissions for /mnt/phone and /mnt/root."
+
     log_info "Compiling singularity-daemon and singularity-cli in release mode..."
     cargo build --release --manifest-path "${WORKSPACE_ROOT}/Cargo.toml" -p singularity-daemon -p singularity-cli
 
@@ -206,6 +211,37 @@ with open(path, "w") as f:
         log_success "Configured pam_singularity.so in /etc/pam.d/sudo."
     else
         log_success "pam_singularity.so already configured in /etc/pam.d/sudo."
+    fi
+
+    # Configure /etc/pam.d/hyprlock
+    log_info "Configuring /etc/pam.d/hyprlock..."
+    if [ ! -f "/etc/pam.d/hyprlock" ]; then
+        sudo tee /etc/pam.d/hyprlock >/dev/null <<EOF
+#%PAM-1.0
+auth        sufficient    pam_singularity.so
+auth        include       system-auth
+account     include       system-auth
+password    include       system-auth
+session     include       system-auth
+EOF
+        log_success "Created /etc/pam.d/hyprlock with pam_singularity.so."
+    elif ! grep -q "pam_singularity.so" /etc/pam.d/hyprlock 2>/dev/null; then
+        sudo python3 -c '
+path = "/etc/pam.d/hyprlock"
+with open(path, "r") as f:
+    lines = f.readlines()
+idx = 0
+for i, line in enumerate(lines):
+    if line.strip().startswith("#%PAM"):
+        idx = i + 1
+        break
+lines.insert(idx, "auth        sufficient    pam_singularity.so\n")
+with open(path, "w") as f:
+    f.writelines(lines)
+'
+        log_success "Configured pam_singularity.so in /etc/pam.d/hyprlock."
+    else
+        log_success "pam_singularity.so already configured in /etc/pam.d/hyprlock."
     fi
 
     # Configure greetd (dms-greeter cold-boot login)

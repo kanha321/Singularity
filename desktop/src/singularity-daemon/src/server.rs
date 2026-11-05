@@ -17,7 +17,7 @@ pub struct IpcServer {
     registry: Arc<RwLock<FeatureRegistry>>,
     active_device: Arc<RwLock<String>>,
     storage_tunnel: Arc<Mutex<Option<AdbTunnel>>>,
-    active_mount: Arc<Mutex<Option<PathBuf>>>,
+    active_mounts: Arc<Mutex<Vec<PathBuf>>>,
     has_root: Arc<std::sync::atomic::AtomicBool>,
     auth_cache: SharedAuthCache,
 }
@@ -30,7 +30,7 @@ impl IpcServer {
         registry: Arc<RwLock<FeatureRegistry>>,
         active_device: Arc<RwLock<String>>,
         storage_tunnel: Arc<Mutex<Option<AdbTunnel>>>,
-        active_mount: Arc<Mutex<Option<PathBuf>>>,
+        active_mounts: Arc<Mutex<Vec<PathBuf>>>,
         has_root: Arc<std::sync::atomic::AtomicBool>,
         auth_cache: SharedAuthCache,
     ) -> Result<Self> {
@@ -52,7 +52,7 @@ impl IpcServer {
             registry,
             active_device,
             storage_tunnel,
-            active_mount,
+            active_mounts,
             has_root,
             auth_cache,
         })
@@ -66,7 +66,7 @@ impl IpcServer {
                     let registry = Arc::clone(&self.registry);
                     let active_device = Arc::clone(&self.active_device);
                     let storage_tunnel = Arc::clone(&self.storage_tunnel);
-                    let active_mount = Arc::clone(&self.active_mount);
+                    let active_mounts = Arc::clone(&self.active_mounts);
                     let has_root = Arc::clone(&self.has_root);
                     let auth_cache = Arc::clone(&self.auth_cache);
 
@@ -77,7 +77,7 @@ impl IpcServer {
                             registry,
                             active_device,
                             storage_tunnel,
-                            active_mount,
+                            active_mounts,
                             has_root,
                             auth_cache,
                         )
@@ -104,7 +104,7 @@ mod tests {
         let (tx, _) = tokio::sync::broadcast::channel(16);
         let registry = Arc::new(RwLock::new(FeatureRegistry::new()));
         let storage_tunnel = Arc::new(Mutex::new(None));
-        let active_mount = Arc::new(Mutex::new(None));
+        let active_mounts = Arc::new(Mutex::new(Vec::new()));
         let has_root = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let auth_cache = crate::auth_cache::new_auth_cache();
         let temp_dir = tempfile::tempdir().unwrap();
@@ -115,7 +115,7 @@ mod tests {
             registry,
             Arc::new(RwLock::new("127.0.0.1:5555".into())),
             storage_tunnel,
-            active_mount,
+            active_mounts,
             has_root,
             auth_cache,
         );

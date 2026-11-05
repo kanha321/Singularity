@@ -1,4 +1,5 @@
 pub mod biometric;
+pub mod browser;
 pub mod calling;
 pub mod clipboard;
 pub mod storage;
