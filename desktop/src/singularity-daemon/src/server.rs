@@ -1,5 +1,6 @@
 pub mod handler;
 pub mod auth_handler;
+pub mod remount_handler;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

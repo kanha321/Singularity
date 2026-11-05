@@ -119,6 +119,15 @@ impl SingularityClient {
             _ => Err(ClientError::DaemonError("Unexpected response".into())),
         }
     }
+
+    pub async fn remount_system(&self, rw: bool) -> Result<String> {
+        match self.send(&IpcRequest::RemountSystem { read_write: rw }).await? {
+            IpcResponse::Custom(val) => Ok(val.as_str().unwrap_or("").to_string()),
+            IpcResponse::Ok => Ok(if rw { "read-write (rw)" } else { "read-only (ro)" }.into()),
+            IpcResponse::Error(e) => Err(ClientError::DaemonError(e)),
+            _ => Err(ClientError::DaemonError("Unexpected response".into())),
+        }
+    }
 }
 
 impl Default for SingularityClient {

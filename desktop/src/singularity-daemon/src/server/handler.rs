@@ -44,39 +44,31 @@ pub async fn handle_client(
         }
         IpcRequest::MountStorage { remote_path } => {
             let is_root = has_root.load(std::sync::atomic::Ordering::SeqCst);
-            if !is_root {
-                IpcResponse::Error("Device is not rooted (KernelSU/su required for transparent storage mount)".into())
-            } else if let Some(adb_address) = crate::transport::resolve_or_wait_device(&active_device, 3).await {
+            if let Some(adb_address) = crate::transport::resolve_or_wait_device(&active_device, 3).await {
                 if let Some(custom) = remote_path {
                     let target_remote = singularity_core::features::storage::config::canonical_remote_path(&custom);
-                    let mount_point = PathBuf::from("/mnt/phone");
-                    let identity_file = dirs::config_dir()
-                        .unwrap_or_else(|| PathBuf::from("/tmp"))
-                        .join("singularity/storage_id_ed25519");
-
-                    if let Err(e) = storage::ensure_device_storage_ready(&adb_address, 2222).await {
-                        IpcResponse::Error(format!("Failed to prepare phone storage daemon: {}", e))
+                    if target_remote == "/" && !is_root {
+                        IpcResponse::Error("Device is not rooted (KernelSU/su required to mount root /)".into())
                     } else {
-                        match AdbTunnel::forward_tcp(&adb_address, 2222).await {
-                            Ok(tunnel) => {
-                                let port = tunnel.local_port();
-                                *storage_tunnel.lock().await = Some(tunnel);
-                                match storage::mount_phone(port, &target_remote, &mount_point, &identity_file) {
-                                    Ok(()) => {
-                                        active_mounts.lock().await.push(mount_point.clone());
-                                        IpcResponse::StorageMounted { mount_point: mount_point.to_string_lossy().to_string() }
-                                    }
-                                    Err(e) => {
-                                        *storage_tunnel.lock().await = None;
-                                        IpcResponse::Error(format!("Failed to mount storage: {}", e))
-                                    }
+                        let mount_point = if target_remote == "/" {
+                            PathBuf::from("/mnt/root")
+                        } else {
+                            PathBuf::from("/mnt/phone")
+                        };
+                        if let Err(e) = storage::ensure_device_storage_ready(&adb_address).await {
+                            IpcResponse::Error(format!("Failed to prepare phone storage daemon: {}", e))
+                        } else {
+                            match storage::mount_phone(&adb_address, &target_remote, &mount_point) {
+                                Ok(()) => {
+                                    active_mounts.lock().await.push(mount_point.clone());
+                                    IpcResponse::StorageMounted { mount_point: mount_point.to_string_lossy().to_string() }
                                 }
+                                Err(e) => IpcResponse::Error(format!("Failed to mount storage: {}", e)),
                             }
-                            Err(e) => IpcResponse::Error(format!("Failed to forward ADB port for storage: {}", e)),
                         }
                     }
                 } else {
-                    match storage::mount_dual_storage(&adb_address, Arc::clone(&active_mounts), Arc::clone(&storage_tunnel)).await {
+                    match storage::mount_phone_storage(&adb_address, false, is_root, Arc::clone(&active_mounts)).await {
                         Ok(points) => IpcResponse::StorageMounted { mount_point: points },
                         Err(e) => IpcResponse::Error(format!("Failed to mount storage: {}", e)),
                     }
@@ -130,6 +122,9 @@ pub async fn handle_client(
                 }
                 None => IpcResponse::Error("No Android device detected on network".into()),
             }
+        }
+        IpcRequest::RemountSystem { read_write } => {
+            crate::server::remount_handler::handle_remount(&active_device, &has_root, read_write).await
         }
         IpcRequest::Custom { .. } => IpcResponse::Ok,
     };

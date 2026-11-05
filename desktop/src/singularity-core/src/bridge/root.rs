@@ -77,6 +77,16 @@ impl RootBridge {
         tracing::debug!(target: "root_bridge", path, "Reading from sysfs node (mock)");
         Ok(String::new())
     }
+
+    /// Remounts system partitions (/ /product /vendor) as read-write or read-only
+    pub async fn remount_system(&self, rw: bool) -> Result<String> {
+        let mode = if rw { "rw" } else { "ro" };
+        let cmd = format!(
+            "mount -o remount,{0} / && mount -o remount,{0} /product 2>/dev/null; mount -o remount,{0} /vendor 2>/dev/null",
+            mode
+        );
+        self.exec_su(&cmd).await
+    }
 }
 
 impl Default for RootBridge {
@@ -133,5 +143,7 @@ mod tests {
         let bridge = RootBridge::with_runner(Arc::new(FakeRunner));
         let res = bridge.exec_su("whoami").await.unwrap();
         assert_eq!(res, "executed: whoami");
+        let remount = bridge.remount_system(true).await.unwrap();
+        assert!(remount.contains("mount -o remount,rw"));
     }
 }

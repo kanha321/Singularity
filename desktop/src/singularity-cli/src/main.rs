@@ -50,6 +50,17 @@ enum Commands {
         /// Target URL or link to open
         url: String,
     },
+
+    /// Remount system partitions as read-write or read-only (requires root)
+    Remount {
+        /// Remount as read-write (writable)
+        #[arg(long, conflicts_with = "ro")]
+        rw: bool,
+
+        /// Remount as read-only (protected)
+        #[arg(long, conflicts_with = "rw")]
+        ro: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -117,6 +128,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::OpenUrl { url } => {
             client.open_url(&url).await?;
             println!("✅ Dispatched URL to Android: {}", url);
+        }
+        Commands::Remount { rw: _, ro } => {
+            let is_rw = !ro;
+            let res = client.remount_system(is_rw).await?;
+            if is_rw {
+                println!("🔓 System partitions remounted as {}. Run 'singularity remount --ro' when done.", res);
+            } else {
+                println!("🔒 System partitions locked as {}.", res);
+            }
         }
     }
 

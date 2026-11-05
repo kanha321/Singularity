@@ -72,14 +72,15 @@ pub fn start_supervisor(
                     has_root.store(device.has_root(), std::sync::atomic::Ordering::SeqCst);
                     registry.write().await.on_connected(&device).await;
 
-                    if auto_mount && device.has_root() {
+                    if auto_mount {
                         let mount_target = target_device.clone();
                         let a_mounts = Arc::clone(&active_mounts);
                         let s_tunnel = Arc::clone(&storage_tunnel);
+                        let has_root_flag = device.has_root();
                         tokio::spawn(async move {
                             if let Err(e) = storage::auto_mount_phone_storage(
                                 &mount_target,
-                                true,
+                                has_root_flag,
                                 true,
                                 a_mounts,
                                 s_tunnel,

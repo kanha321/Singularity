@@ -28,7 +28,7 @@ These external tools unlock specific convergence modules. The daemon detects the
 | **`wl-clipboard`** | `wl-clipboard` | **Universal Clipboard** | Wayland clipboard read/write events (`wl-paste`, `wl-copy`) and desktop echo suppression. |
 | **`pipewire`** | `pipewire`, `wireplumber` | **Virtual Mic & Audio** | Virtual audio source sink routing phone microphone into Linux desktop calls (Zoom, Discord, OBS). |
 | **`v4l2loopback`** | `v4l2loopback-dkms` | **Continuity Camera** | Virtual Linux webcam device (`/dev/videoX`) receiving high-resolution 60fps video feed from phone camera. |
-| **`sshfs` / `fuse3`** | `sshfs`, `fuse3` | **Network Storage** | Direct transparent mounting of phone storage to `/mnt/phone` on Arch Linux. |
+| **`madbfs` / `fuse3`** | `madbfs-bin`, `fuse3` | **Network Storage** | Native ADB FUSE transparent mounting of phone storage to `/mnt/phone` on Arch Linux (rootless). |
 | **`rg` / `fd`** | `ripgrep`, `fd` | **Blazing Search** | Sub-millisecond typeahead filesystem search across laptop drives. |
 | **`ffmpeg`** | `ffmpeg` | **File Previews & Thumbnails** | Rapid video keyframe extraction and image downscaling for 128x128 cached thumbnails. |
 
@@ -71,7 +71,7 @@ These external tools unlock specific convergence modules. The daemon detects the
 ### 2.3 Elevated / Kernel Bridges (Root Privileges)
 | Bridge / Tool | Privilege Level | Capability Provided |
 | :--- | :--- | :--- |
-| **KernelSU / Magisk** | Root (UID 0) | Kernel battery charge limiter (`sysfs`), raw input injection (`/dev/uinput`), full storage mount (`/mnt/phone`), and automated boot persistence. |
+| **KernelSU / Magisk** | Root (UID 0) | Kernel battery charge limiter (`sysfs`), raw input injection (`/dev/uinput`), system root mount (`/mnt/root`), and automated boot persistence. |
 | **Shell Daemon** | Shell (UID 2000) | Headless clipboard reading (bypasses Android 10+ background restriction) and display mirroring. |
 
 ---

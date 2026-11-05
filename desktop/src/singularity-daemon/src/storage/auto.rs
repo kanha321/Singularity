@@ -5,47 +5,36 @@ use crate::error::Result;
 use crate::storage;
 use crate::transport::AdbTunnel;
 
-pub async fn mount_dual_storage(
+pub async fn mount_phone_storage(
     serial: &str,
+    mount_root: bool,
+    has_root: bool,
     active_mounts: Arc<Mutex<Vec<PathBuf>>>,
-    storage_tunnel: Arc<Mutex<Option<AdbTunnel>>>,
 ) -> Result<String> {
-    storage::ensure_device_storage_ready(serial, 2222).await?;
-
-    let identity_file = dirs::config_dir()
-        .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join("singularity/storage_id_ed25519");
-
-    let tunnel = AdbTunnel::forward_tcp(serial, 2222).await?;
-    let port = tunnel.local_port();
+    storage::ensure_device_storage_ready(serial).await?;
 
     let phone_mount = PathBuf::from("/mnt/phone");
-    let root_mount = PathBuf::from("/mnt/root");
+    storage::mount_phone(serial, "/sdcard", &phone_mount)?;
 
-    // 1. Mount phone internal storage (/data/media/0) to /mnt/phone
-    storage::mount_phone(port, "/data/media/0", &phone_mount, &identity_file)?;
-
-    // 2. Mount root filesystem (/) to /mnt/root
     let mut mounted_list = vec![phone_mount.clone()];
-    match storage::mount_phone(port, "/", &root_mount, &identity_file) {
-        Ok(()) => {
-            mounted_list.push(root_mount.clone());
-        }
-        Err(e) => {
-            tracing::warn!(target: "storage_auto", error = %e, "Failed mounting / to /mnt/root");
+    if mount_root && has_root {
+        let root_mount = PathBuf::from("/mnt/root");
+        match storage::mount_phone(serial, "/", &root_mount) {
+            Ok(()) => mounted_list.push(root_mount),
+            Err(e) => tracing::warn!(target: "storage_auto", error = %e, "Failed mounting / to /mnt/root"),
         }
     }
 
-    *storage_tunnel.lock().await = Some(tunnel);
     let mut guard = active_mounts.lock().await;
     *guard = mounted_list;
 
-    tracing::info!(
-        target: "storage_auto",
-        "Phone storage transparently mounted at /mnt/phone (/sdcard) and /mnt/root (/)"
-    );
-
-    Ok("/mnt/phone, /mnt/root".to_string())
+    let res = guard
+        .iter()
+        .map(|p| p.to_string_lossy().to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    tracing::info!(target: "storage_auto", mounted = %res, "Phone storage successfully mounted over ADB");
+    Ok(res)
 }
 
 pub async fn auto_mount_phone_storage(
@@ -53,15 +42,10 @@ pub async fn auto_mount_phone_storage(
     has_root: bool,
     auto_mount_enabled: bool,
     active_mounts: Arc<Mutex<Vec<PathBuf>>>,
-    storage_tunnel: Arc<Mutex<Option<AdbTunnel>>>,
+    _storage_tunnel: Arc<Mutex<Option<AdbTunnel>>>,
 ) -> Result<bool> {
     if !auto_mount_enabled {
         tracing::debug!(target: "storage_auto", "Storage auto-mount disabled by configuration");
-        return Ok(false);
-    }
-
-    if !has_root {
-        tracing::info!(target: "storage_auto", "Device lacks root bridge; transparent storage auto-mount skipped");
         return Ok(false);
     }
 
@@ -79,7 +63,7 @@ pub async fn auto_mount_phone_storage(
         }
     }
 
-    mount_dual_storage(serial, active_mounts, storage_tunnel).await?;
+    mount_phone_storage(serial, false, has_root, active_mounts).await?;
     Ok(true)
 }
 
@@ -92,16 +76,6 @@ mod tests {
         let active_mounts = Arc::new(Mutex::new(Vec::new()));
         let storage_tunnel = Arc::new(Mutex::new(None));
         let res = auto_mount_phone_storage("127.0.0.1:5555", true, false, active_mounts.clone(), storage_tunnel.clone()).await;
-        assert_eq!(res.unwrap(), false);
-        assert!(active_mounts.lock().await.is_empty());
-        assert!(storage_tunnel.lock().await.is_none());
-    }
-
-    #[tokio::test]
-    async fn test_auto_mount_skipped_when_no_root() {
-        let active_mounts = Arc::new(Mutex::new(Vec::new()));
-        let storage_tunnel = Arc::new(Mutex::new(None));
-        let res = auto_mount_phone_storage("127.0.0.1:5555", false, true, active_mounts.clone(), storage_tunnel.clone()).await;
         assert_eq!(res.unwrap(), false);
         assert!(active_mounts.lock().await.is_empty());
     }
@@ -119,7 +93,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_auto_mount_skipped_when_already_mounted() {
-        let active_mounts = Arc::new(Mutex::new(vec![PathBuf::from("/mnt/phone"), PathBuf::from("/mnt/root")]));
+        let active_mounts = Arc::new(Mutex::new(vec![PathBuf::from("/mnt/phone")]));
         let storage_tunnel = Arc::new(Mutex::new(None));
         let res = auto_mount_phone_storage("127.0.0.1:5555", true, true, active_mounts.clone(), storage_tunnel.clone()).await;
         assert_eq!(res.unwrap(), true);
@@ -129,9 +103,8 @@ mod tests {
     async fn test_auto_mount_fails_gracefully_on_unreachable_serial() {
         let active_mounts = Arc::new(Mutex::new(Vec::new()));
         let storage_tunnel = Arc::new(Mutex::new(None));
-        let res = auto_mount_phone_storage("127.0.0.1:59998", true, true, active_mounts.clone(), storage_tunnel.clone()).await;
+        let res = auto_mount_phone_storage("127.0.0.1:59998", false, true, active_mounts.clone(), storage_tunnel.clone()).await;
         assert!(res.is_err());
         assert!(active_mounts.lock().await.is_empty());
-        assert!(storage_tunnel.lock().await.is_none());
     }
 }

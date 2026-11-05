@@ -139,16 +139,15 @@ For a detailed breakdown of the exact scope, boundaries, and portability level o
   - Vector icon placeholder with smooth crossfade to preview upon load completion and seamless fallback on error or non-media files.
   - Integrated into both `FsListCard` and the 3-dot context menu bottom sheet (`FsItemContextMenuSheet`) with enlarged 48dp preview header.
 
-### 3.11 Transparent Phone Storage & Root Filesystem Dual Auto-Mounting
-- **What it does:** Automatically mounts both the connected phone's internal storage (`/data/media/0` / `/sdcard`) at `/mnt/phone` and the complete phone root filesystem (`/`) at `/mnt/root` upon connection, and cleanly unmounts both on disconnect.
+### 3.11 Transparent Phone Storage Auto-Mounting (Rootless & Termux-Free)
+- **What it does:** Automatically mounts the connected phone's internal storage (`/sdcard`) to `/mnt/phone` upon connection, providing full read/write access to all user files as well as `/sdcard/Android/data` and `/sdcard/Android/obb`. Cleanly unmounts on disconnect.
 - **How it works:**
-  - `singularity-daemon`'s device supervisor detects rooted phone presence (KernelSU UID 0).
-  - Starts or verifies the phone's loopback Termux OpenSSH SFTP daemon on port `2222` with host public key authorization in `/data/ssh/authorized_keys`.
-  - Forwards port `2222` over an ADB TCP tunnel and asynchronously mounts:
-    1. **Internal Storage (`/data/media/0`):** Mounted to `/mnt/phone` (providing instant access to user downloads, camera photos, documents, and media).
-    2. **Root Filesystem (`/`):** Mounted to `/mnt/root` (providing full access to system partitions, apps, configurations, and data).
-  - Background async execution guarantees zero connection latency for the clipboard highway and IPC server.
-  - Automatically unmounts all active mounts via `fusermount3 -u -z` when the phone disconnects or the daemon terminates.
+  - `singularity-daemon`'s storage supervisor detects the connected Android phone via ADB.
+  - Spawns the modern ADB FUSE driver (`madbfs`) with `--root=/sdcard` pointing to `/mnt/phone`.
+  - Runs under the native Android `shell` UID 2000 context, completely bypassing Scoped Storage / SAF restrictions without requiring root.
+  - 100% Termux-free and zero phone-side binary footprint.
+  - Optional system root mounting: Can mount full root filesystem (`/`) to `/mnt/root` when requested on rooted devices.
+  - Automatically unmounts active mounts via `fusermount3 -u -z` when the phone disconnects or the daemon terminates.
   - Can be toggled via `--auto-mount=false` in `DaemonConfig` or managed on-demand via `singularity mount` / `singularity unmount`.
 
 ---

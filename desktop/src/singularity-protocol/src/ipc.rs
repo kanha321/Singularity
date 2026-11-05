@@ -20,6 +20,9 @@ pub enum IpcRequest {
     OpenUrl {
         url: String,
     },
+    RemountSystem {
+        read_write: bool,
+    },
     Custom {
         feature: String,
         action: String,
@@ -104,5 +107,9 @@ mod tests {
         let cancel = IpcRequest::CancelBiometric;
         let cancel_json = serde_json::to_string(&cancel).unwrap();
         assert!(cancel_json.contains("CancelBiometric"));
+
+        let remount = IpcRequest::RemountSystem { read_write: true };
+        let remount_json = serde_json::to_string(&remount).unwrap();
+        assert!(remount_json.contains("RemountSystem"));
     }
 }

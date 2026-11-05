@@ -2,27 +2,23 @@ use std::path::Path;
 use std::process::Command;
 use crate::error::{DaemonError, Result};
 
-pub fn check_sshfs_installed() -> Result<()> {
-    match Command::new("which").arg("sshfs").output() {
+pub fn check_madbfs_installed() -> Result<()> {
+    match Command::new("which").arg("madbfs").output() {
         Ok(out) if out.status.success() => Ok(()),
         _ => Err(DaemonError::Storage(
-            "sshfs client not found on host. Please install it with: sudo pacman -S sshfs".into(),
+            "madbfs client not found on host. Install via: yay -S madbfs-bin".into(),
         )),
     }
 }
 
 pub fn mount_phone<P: AsRef<Path>>(
-    local_port: u16,
+    serial: &str,
     remote_path: &str,
     mount_point: P,
-    identity_file: P,
 ) -> Result<()> {
-    check_sshfs_installed()?;
+    check_madbfs_installed()?;
 
     let mount_point = mount_point.as_ref();
-    let identity_file = identity_file.as_ref();
-
-    // Preemptively clean up any stale FUSE handle from a previous crashed session
     let _ = Command::new("fusermount3")
         .args(["-u", "-z", mount_point.to_string_lossy().as_ref()])
         .status();
@@ -33,38 +29,35 @@ pub fn mount_phone<P: AsRef<Path>>(
         })?;
     }
 
-    let clean_path = remote_path.trim_start_matches('/');
-    let source = if clean_path.is_empty() {
-        "root@127.0.0.1://".to_string()
+    let root_path = if remote_path.trim().is_empty() {
+        "/sdcard"
     } else {
-        format!("root@127.0.0.1://{}", clean_path)
+        remote_path.trim()
     };
-    let port_str = local_port.to_string();
 
     tracing::info!(
         target: "storage_process",
-        local_port,
-        remote_path,
+        serial,
+        root_path,
         mount_point = %mount_point.display(),
-        "Invoking sshfs to mount remote phone storage"
+        "Invoking madbfs to mount phone storage over ADB"
     );
 
-    let status = Command::new("sshfs")
-        .args([
-            &source,
-            mount_point.to_string_lossy().as_ref(),
-            "-p", &port_str,
-            "-o", &format!("IdentityFile={}", identity_file.display()),
-            "-o", "StrictHostKeyChecking=no",
-            "-o", "UserKnownHostsFile=/dev/null",
-            "-o", "reconnect,ServerAliveInterval=15,ServerAliveCountMax=3,follow_symlinks",
-        ])
+    let mut cmd = Command::new("madbfs");
+    let trimmed_serial = serial.trim();
+    if !trimmed_serial.is_empty() && trimmed_serial != "auto" {
+        cmd.arg(format!("--serial={}", trimmed_serial));
+    }
+    cmd.arg(format!("--root={}", root_path));
+    cmd.arg(mount_point.to_string_lossy().as_ref());
+
+    let status = cmd
         .status()
-        .map_err(|e| DaemonError::Storage(format!("Failed executing sshfs: {}", e)))?;
+        .map_err(|e| DaemonError::Storage(format!("Failed executing madbfs: {}", e)))?;
 
     if !status.success() {
         return Err(DaemonError::Storage(format!(
-            "sshfs failed with exit code: {:?}",
+            "madbfs failed with exit code: {:?}",
             status.code()
         )));
     }
@@ -72,7 +65,7 @@ pub fn mount_phone<P: AsRef<Path>>(
     tracing::info!(
         target: "storage_process",
         mount_point = %mount_point.display(),
-        "Phone storage successfully mounted"
+        "Phone storage successfully mounted via ADB FUSE"
     );
     Ok(())
 }
@@ -104,5 +97,10 @@ mod tests {
     fn unmount_non_existent_path_returns_ok() {
         let fake_path = Path::new("/tmp/non_existent_singularity_mount_test_123");
         assert!(unmount_phone(fake_path).is_ok());
+    }
+
+    #[test]
+    fn check_madbfs_installed_verifies_presence() {
+        assert!(check_madbfs_installed().is_ok());
     }
 }

@@ -57,6 +57,7 @@ impl AdbTunnel {
     }
 
     /// Establishes dynamic port forwarding over ADB to a target TCP port on the device (tcp:0 -> tcp:TARGET_PORT).
+    #[allow(dead_code)]
     pub async fn forward_tcp(serial: &str, target_port: u16) -> Result<Self> {
         let output = Command::new("adb")
             .args(["-s", serial, "forward", "tcp:0", &format!("tcp:{}", target_port)])

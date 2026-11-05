@@ -43,7 +43,7 @@ impl Feature for StorageFeature {
 
     fn requirements(&self) -> FeatureRequirements {
         FeatureRequirements {
-            root: RequirementLevel::Required,
+            root: RequirementLevel::Optional,
             shell: RequirementLevel::Required,
             app: RequirementLevel::Optional,
         }
@@ -57,17 +57,9 @@ impl Feature for StorageFeature {
     async fn on_connected(&mut self, device: &DeviceBridge) -> Result<()> {
         let has_root = device.has_root();
         self.state.set_has_root(has_root);
-        if !has_root {
-            tracing::warn!(target: "storage_feature", "Device has no root bridge; storage feature degraded");
-            return Ok(());
-        }
-
-        let (_, pub_key) = handler::ensure_host_ssh_key()?;
-        handler::authorize_key_on_device(&pub_key, device).await?;
-        handler::start_device_sshd(self.config.ssh_port, device).await?;
         if self.config.auto_mount {
             let mount_point = handler::resolve_mount_point(&self.config);
-            let target_remote = config::default_remote_path(has_root).to_string();
+            let target_remote = self.config.remote_path.clone();
             self.state.set_mounted(mount_point, target_remote);
         }
         Ok(())
@@ -93,21 +85,17 @@ impl Feature for StorageFeature {
         Ok(())
     }
 
-    async fn on_command(&mut self, cmd: &FeatureCommand, device: &DeviceBridge) -> Result<CommandResponse> {
+    async fn on_command(&mut self, cmd: &FeatureCommand, _device: &DeviceBridge) -> Result<CommandResponse> {
         match cmd.action.as_str() {
             "mount" => {
-                let (_, pub_key) = handler::ensure_host_ssh_key()?;
-                handler::authorize_key_on_device(&pub_key, device).await?;
-                handler::start_device_sshd(self.config.ssh_port, device).await?;
                 let mount_point = handler::resolve_mount_point(&self.config);
                 self.state.set_mounted(mount_point.clone(), self.config.remote_path.clone());
                 Ok(CommandResponse::Ok(serde_json::json!({
                     "mount_point": mount_point.to_string_lossy(),
-                    "port": self.config.ssh_port
+                    "remote_path": self.config.remote_path
                 })))
             }
             "unmount" => {
-                handler::stop_device_sshd(device).await?;
                 self.state.set_unmounted();
                 Ok(CommandResponse::Ok(serde_json::json!({ "unmounted": true })))
             }
@@ -126,7 +114,8 @@ mod tests {
     async fn storage_feature_lifecycle_and_status() {
         let mut feature = StorageFeature::default();
         assert_eq!(feature.id(), "storage");
-        assert_eq!(feature.requirements().root, RequirementLevel::Required);
+        assert_eq!(feature.requirements().root, RequirementLevel::Optional);
+        assert_eq!(feature.requirements().shell, RequirementLevel::Required);
 
         let info = DeviceInfo {
             serial: "test".into(),

@@ -3,15 +3,13 @@ package com.kanhaji.singularity.feature.home.model
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.OpenInBrowser
 import androidx.compose.material.icons.outlined.PowerSettingsNew
 
 object HomeFeatureCatalog {
     fun featureCards(
         onOpenAuth: () -> Unit,
         onOpenPower: () -> Unit,
-        onOpenFiles: () -> Unit,
-        onOpenShare: () -> Unit = {}
+        onOpenFiles: () -> Unit
     ) = listOf(
         FeatureCardModel(
             id = "auth_feature",
@@ -30,15 +28,6 @@ object HomeFeatureCatalog {
             statusText = "Control",
             isHighlighted = true,
             onClick = onOpenPower
-        ),
-        FeatureCardModel(
-            id = "share_feature",
-            title = "Send to PC",
-            subtitle = "Push link to desktop",
-            icon = Icons.Outlined.OpenInBrowser,
-            statusText = "Send",
-            isHighlighted = false,
-            onClick = onOpenShare
         ),
         FeatureCardModel(
             id = "files_feature",

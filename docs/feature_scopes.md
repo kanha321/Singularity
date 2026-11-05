@@ -144,8 +144,8 @@ These features depend solely on the Linux Kernel, POSIX system calls, and the PA
     * In CLI sessions: Monitors `/dev/tty` for key events.
     * In Display Managers & Lock screens: Directly probes `/dev/input/by-path/*-event-kbd` using raw Linux `poll()`. Tapping `Enter` or `Esc` immediately cancels biometric verification and falls back to password entry.
 * **Transparent Storage Auto-Mounting (`/mnt/phone`, `/mnt/root`):**
-  * **Scope:** Universal Linux FUSE (`fuse3` + `sshfs`).
-  * **Permissions:** Runs in unprivileged user space by pointing to pre-created mount directories owned by UID 1000.
+  * **Scope:** Universal Linux FUSE (`fuse3` + `madbfs`).
+  * **Permissions:** Runs in unprivileged user space by pointing to pre-created mount directories owned by UID 1000. No root or Termux required for `/mnt/phone` (`/sdcard`).
 
 ---
 
@@ -173,7 +173,8 @@ These features contain zero platform-dependent assumptions and operate across an
 | **Browser Tab Receiving** | ❌ **Non-Root (Standard ADB)** | Android 5.0+ | `am start -a android.intent.action.VIEW -d <url>` |
 | **Desktop Telephony** | ❌ **Non-Root (Standard ADB)** | Android 8.0+ | `telecom accept-call` / `telecom end-call` |
 | **Homescreen Companion UI** | ❌ **Non-Root (Standard App)** | Android 10+ | Jetpack Compose + Material 3 UI |
-| **Transparent Storage Mount** | ⚡ **Rooted Android Required** | Android 10+ | KernelSU / Magisk root shell hosting OpenSSH `sshd` / `sftp-server` on loopback port 2222 |
+| **Transparent Storage (/mnt/phone)** | ❌ **Non-Root (Standard ADB UID 2000)** | Android 5.0+ | Modern ADB FUSE (`madbfs`), full access to `/sdcard` & `/sdcard/Android/*` |
+| **System Root Mount (/mnt/root)** | ⚡ **Rooted Android (Optional)** | Android 10+ | KernelSU / Magisk root filesystem mount via `madbfs` |
 
 ---
 
@@ -195,11 +196,13 @@ If you change components of your workstation environment, consult this guide to 
 * **What keeps working:**
   * All compiled binaries (`singularity-daemon`, `singularity-cli`, `pam_singularity.so`).
 * **What changes:**
-  * Re-run setup using the target distribution's package manager (`apt install`, `dnf install`) to acquire runtime dependencies (`android-tools`, `sshfs`, `fd`).
+  * Re-run setup using the target distribution's package manager (`apt install`, `dnf install`) to acquire runtime dependencies (`android-tools`, `madbfs`, `fd`).
 
 ### Scenario D: Using a Non-Rooted Android Phone
 * **What keeps working:**
+  * **Transparent Storage at `/mnt/phone` (`/sdcard`):** Mounts automatically without root, with full read/write access to user files and `/sdcard/Android/data` & `/sdcard/Android/obb`.
   * Biometric PAM (`sudo` and screen unlock), Clipboard sync, Browser tab push, Media streaming on port 8920, and Desktop Telephony.
 * **What changes:**
-  * Transparent SSHFS directory mounts at `/mnt/phone` and `/mnt/root` will fail to mount since the root SFTP daemon cannot be started on the phone without root. All file access shifts to the embedded HTTP File Browser tab.
+  * Only `/mnt/root` (the system root partition `/`) requires root.
+  * Termux is completely unnecessary and can be removed.
 
