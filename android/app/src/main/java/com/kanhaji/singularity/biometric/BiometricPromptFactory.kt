@@ -56,8 +56,8 @@ class BiometricPromptFactory(
                         Log.i(BiometricAuthActivity.TAG, "Prompt dismissed by user/system; keeping auth request active for app retry")
                         AppBridgeService.reportBiometricProgress("cancelled", failedAttemptsCount)
                         AppBridgeService.onBiometricPromptDismissed(activity)
-                    } else if (isUnlock) {
-                        AppBridgeService.showPcLockedNotification(activity)
+                    } else if ((isUnlock || isLogin) && AppBridgeService.pcLockState.value == "locked") {
+                        AppBridgeService.showPcLockedNotification(activity, isLogin = isLogin)
                     }
                 } else if (isPamAuth) {
                     AppBridgeService.reportBiometricResult(false, errString.toString(), failedAttemptsCount, isLockout)

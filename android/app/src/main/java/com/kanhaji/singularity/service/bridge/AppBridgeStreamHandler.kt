@@ -96,6 +96,7 @@ object AppBridgeStreamHandler {
         }
         val locked = json.optBoolean("locked", false)
         val loggedIn = json.optBoolean("logged_in", json.optBoolean("isLoggedIn", false))
+        LockTransitionHelper.handleLockTransition(context, locked, loggedIn)
         return AppBridgePayloadHelper.buildLockResponse(locked, loggedIn)
     }
 }

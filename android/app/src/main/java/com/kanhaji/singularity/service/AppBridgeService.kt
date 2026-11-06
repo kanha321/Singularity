@@ -21,20 +21,13 @@ class AppBridgeService : Service() {
         const val ACTION_RELAUNCH_PROMPT = "com.kanhaji.singularity.action.RELAUNCH_PROMPT"
         const val ACTION_REJECT_AUTH = "com.kanhaji.singularity.action.REJECT_AUTH"
 
-        val currentAuthRequest = AppBridgeState.currentAuthRequest
-        val pcLockState = AppBridgeState.pcLockState
-        val pcLoginState = AppBridgeState.pcLoginState
-        val isPcConnected = AppBridgeState.isPcConnected
-        val isPhoneLocked = AppBridgeState.isPhoneLocked
-        val isCameraStreaming = AppBridgeState.isCameraStreaming
-        val isCameraMicActive = AppBridgeState.isCameraMicActive
-        val selectedCameraLens = AppBridgeState.selectedCameraLens
-        val pendingCameraAction = AppBridgeState.pendingCameraAction
-        val pendingCameraLens = AppBridgeState.pendingCameraLens
-        val pendingMediaAction = AppBridgeState.pendingMediaAction
-        val currentMediaState = AppBridgeState.currentMediaState
-        val fileServerUrl = AppBridgeState.fileServerUrl
-        val activeConnections = AppBridgeState.activeConnections
+        val currentAuthRequest = AppBridgeState.currentAuthRequest; val pcLockState = AppBridgeState.pcLockState
+        val pcLoginState = AppBridgeState.pcLoginState; val isPcConnected = AppBridgeState.isPcConnected
+        val isPhoneLocked = AppBridgeState.isPhoneLocked; val isCameraStreaming = AppBridgeState.isCameraStreaming
+        val isCameraMicActive = AppBridgeState.isCameraMicActive; val selectedCameraLens = AppBridgeState.selectedCameraLens
+        val pendingCameraAction = AppBridgeState.pendingCameraAction; val pendingCameraLens = AppBridgeState.pendingCameraLens
+        val pendingMediaAction = AppBridgeState.pendingMediaAction; val currentMediaState = AppBridgeState.currentMediaState
+        val fileServerUrl = AppBridgeState.fileServerUrl; val activeConnections = AppBridgeState.activeConnections
         val isActivityVisible = AppBridgeState.isActivityVisible
 
         fun onActivityStopped(context: Context) { Log.d(TAG, "MainActivity stopped.") }
@@ -42,6 +35,7 @@ class AppBridgeService : Service() {
             AppBridgeState.resetPcDisconnected(context)
             BiometricAuthBridge.rejectActiveAuth("PC disconnected")
             BiometricAuthActivity.dismissActivePrompt()
+            LockTransitionHelper.reset()
             if (context != null) AppBridgeNotificationHelper.dismissPcLockedNotification(context)
         }
         fun requestPcUnlock() = AppBridgeState.requestPcUnlock()
@@ -55,7 +49,8 @@ class AppBridgeService : Service() {
         fun requestSwitchLens(lens: String) = AppBridgeState.requestSwitchLens(lens)
         fun pushAuthSettings(s: com.kanhaji.singularity.feature.auth.model.AuthSettings) { Log.i(TAG, "Settings: ${s.toJson()}") }
         fun dismissPcLockedNotification(ctx: Context) = AppBridgeNotificationHelper.dismissPcLockedNotification(ctx)
-        fun showPcLockedNotification(ctx: Context) = AppBridgeNotificationHelper.showPcLockedNotification(ctx)
+        fun showPcLockedNotification(ctx: Context, isLogin: Boolean = false, fullScreen: Boolean = false) =
+            AppBridgeNotificationHelper.showPcLockedNotification(ctx, isLogin, fullScreen)
         fun reportBiometricProgress(e: String, a: Int, m: String? = null) = BiometricAuthBridge.reportBiometricProgress(e, a, m)
         fun reportBiometricResult(s: Boolean, e: String?, a: Int = 0, l: Boolean = false) = BiometricAuthBridge.reportBiometricResult(s, e, a, l)
         fun onBiometricPromptDismissed(ctx: Context) = BiometricAuthBridge.onBiometricPromptDismissed(ctx)
