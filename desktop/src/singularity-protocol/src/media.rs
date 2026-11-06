@@ -8,6 +8,8 @@ pub struct MediaState {
     pub album: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub art_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub art_base64: Option<String>,
     pub status: String,
     pub position_ms: u64,
     pub duration_ms: u64,
@@ -38,6 +40,7 @@ mod tests {
             artist: "Artist Name".into(),
             album: "Album Name".into(),
             art_url: Some("http://localhost:8920/api/media/art".into()),
+            art_base64: Some("AQIDBA==".into()),
             status: "Playing".into(),
             position_ms: 30000,
             duration_ms: 180000,

@@ -34,7 +34,7 @@ fun FileBrowserScreen(initialPath: String = "~") {
     val rootNavigator = LocalNavigator.current
     val fileNavigator = remember(initialPath) { AppNavigator(FolderNavScreen(initialPath)) }
     val collapsingState = rememberCollapsingTopBarState()
-    val collapsingConnection = rememberCollapsingTopBarConnection(state = collapsingState)
+    val collapsingConnection = rememberCollapsingTopBarConnection(collapsingState) { FsScrollStateManager.canExpand }
     var isEditingPath by remember { mutableStateOf(false) }
     var showOptionsSheet by remember { mutableStateOf(false) }
     var showPlacesSheet by remember { mutableStateOf(false) }

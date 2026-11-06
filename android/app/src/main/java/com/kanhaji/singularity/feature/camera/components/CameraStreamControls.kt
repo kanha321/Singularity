@@ -9,8 +9,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.kanhaji.singularity.ui.components.AppSnackbar
+import com.kanhaji.singularity.ui.components.Button
 
 @Composable
 fun CameraStreamControls(
@@ -24,17 +27,34 @@ fun CameraStreamControls(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        val stopColor = Color(0xFFEF4444)
+        val containerColor = when {
+            isStreaming -> stopColor
+            isPcConnected -> MaterialTheme.colorScheme.primary
+            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        }
+        val contentColor = when {
+            isStreaming -> Color.White
+            isPcConnected -> MaterialTheme.colorScheme.onPrimary
+            else -> MaterialTheme.colorScheme.onSurfaceVariant
+        }
+
         Button(
-            onClick = onToggleStreaming,
-            enabled = isPcConnected,
+            onClick = {
+                if (!isPcConnected) {
+                    AppSnackbar.show("PC is currently offline")
+                    return@Button
+                }
+                onToggleStreaming()
+            },
             colors = ButtonDefaults.buttonColors(
-                containerColor = if (isStreaming) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                contentColor = if (isStreaming) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onPrimary
+                containerColor = containerColor,
+                contentColor = contentColor
             ),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(18.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp)
+                .height(54.dp)
         ) {
             Icon(
                 imageVector = if (isStreaming) Icons.Outlined.Stop else Icons.Outlined.PlayArrow,
@@ -43,7 +63,7 @@ fun CameraStreamControls(
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = if (isStreaming) "Stop Webcam" else "Start Webcam",
+                text = if (isStreaming) "Stop Webcam Stream" else "Start Webcam Stream",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
@@ -51,11 +71,10 @@ fun CameraStreamControls(
 
         if (!isPcConnected) {
             Text(
-                text = "PC is not currently connected over Highway.",
+                text = "Connect phone to PC over Highway to start streaming",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error
+                color = MaterialTheme.colorScheme.outline
             )
         }
     }
 }
-

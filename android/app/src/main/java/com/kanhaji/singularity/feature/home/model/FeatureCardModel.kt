@@ -9,5 +9,6 @@ data class FeatureCardModel(
     val icon: ImageVector,
     val statusText: String,
     val isHighlighted: Boolean = false,
+    val isAlert: Boolean = false,
     val onClick: () -> Unit = {}
 )

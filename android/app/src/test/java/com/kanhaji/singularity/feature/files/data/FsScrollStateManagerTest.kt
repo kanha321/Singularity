@@ -1,5 +1,6 @@
 package com.kanhaji.singularity.feature.files.data
 
+import androidx.compose.foundation.lazy.LazyListState
 import com.google.common.truth.Truth.assertThat
 import org.junit.Before
 import org.junit.Test
@@ -40,5 +41,30 @@ class FsScrollStateManagerTest {
 
         assertThat(FsScrollStateManager.getPosition("/path/a")).isNull()
         assertThat(FsScrollStateManager.getPosition("/path/b")).isNull()
+    }
+
+    @Test
+    fun canExpand_whenActiveListStateIsNull_returnsTrue() {
+        FsScrollStateManager.activeListState = null
+        assertThat(FsScrollStateManager.canExpand).isTrue()
+    }
+
+    @Test
+    fun canExpand_whenActiveListStateAtTop_returnsTrue() {
+        FsScrollStateManager.activeListState = LazyListState(0, 0)
+        assertThat(FsScrollStateManager.canExpand).isTrue()
+    }
+
+    @Test
+    fun canExpand_whenActiveListStateScrolledDown_returnsFalse() {
+        FsScrollStateManager.activeListState = LazyListState(5, 0)
+        assertThat(FsScrollStateManager.canExpand).isFalse()
+    }
+
+    @Test
+    fun clear_resetsActiveListState() {
+        FsScrollStateManager.activeListState = LazyListState(1, 0)
+        FsScrollStateManager.clear()
+        assertThat(FsScrollStateManager.activeListState).isNull()
     }
 }

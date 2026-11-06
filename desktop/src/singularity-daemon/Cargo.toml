@@ -21,3 +21,4 @@ dirs.workspace = true
 clap.workspace = true
 tempfile.workspace = true
 libc = "0.2"
+zbus = { version = "5", features = ["tokio"] }

@@ -35,10 +35,11 @@ object HomeFeatureCatalog {
         FeatureCardModel(
             id = "camera_feature",
             title = "Continuity Camera",
-            subtitle = "Webcam & mic streaming",
+            subtitle = if (isCameraActive) "Live streaming to PC" else "Webcam & mic streaming",
             icon = Icons.Outlined.Videocam,
-            statusText = if (isCameraActive) "Live" else "Webcam",
-            isHighlighted = isCameraActive,
+            statusText = if (isCameraActive) "Live" else "Camera",
+            isHighlighted = true,
+            isAlert = isCameraActive,
             onClick = onOpenCamera
         ),
         FeatureCardModel(

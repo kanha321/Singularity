@@ -24,7 +24,11 @@ class MediaNotificationReceiver : BroadcastReceiver() {
             ACTION_NEXT -> "next"
             else -> return
         }
-        MediaControlManager.getInstance(context).dispatchCommand(cmd, player)
+        val mgr = MediaControlManager.getInstance(context)
+        when (cmd) {
+            "play" -> mgr.play(player)
+            "pause" -> mgr.pause(player)
+            else -> mgr.dispatchCommand(cmd, player)
+        }
     }
 }
-

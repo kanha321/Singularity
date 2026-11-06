@@ -45,6 +45,15 @@ fun FolderContentList(
     var isLoading by remember(path, refreshTrigger) { mutableStateOf(cached == null) }
     val listState = rememberLazyListState()
 
+    DisposableEffect(listState, path) {
+        FsScrollStateManager.activeListState = listState
+        onDispose {
+            if (FsScrollStateManager.activeListState === listState) {
+                FsScrollStateManager.activeListState = null
+            }
+        }
+    }
+
     val displayedItems = remember(rawItems, viewOptions) {
         rawItems.applyOptions(viewOptions)
     }

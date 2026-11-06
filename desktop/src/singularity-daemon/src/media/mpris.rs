@@ -14,7 +14,7 @@ pub async fn list_players() -> Vec<String> {
     if let Some(arr) = val.get("data").and_then(|d| d.get(0)).and_then(|d| d.as_array()) {
         for name in arr {
             if let Some(s) = name.as_str() {
-                if s.starts_with("org.mpris.MediaPlayer2.") {
+                if s.starts_with("org.mpris.MediaPlayer2.") && !s.starts_with("org.mpris.MediaPlayer2.singularity") {
                     players.push(s.to_string());
                 }
             }
@@ -78,7 +78,7 @@ async fn query_player_state(player: &str, host_ip: Option<&str>, port: u16) -> O
 
     Some(MediaState {
         player: player.to_string(),
-        title, artist, album, art_url, status,
+        title, artist, album, art_url, art_base64: None, status,
         position_ms: (pos_us.max(0) / 1000) as u64,
         duration_ms: (len_us.max(0) / 1000) as u64,
         can_play: dict.get("CanPlay").and_then(|b| b.get("data")).and_then(|b| b.as_bool()).unwrap_or(true),

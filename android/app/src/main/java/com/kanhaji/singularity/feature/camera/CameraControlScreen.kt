@@ -5,26 +5,34 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
-import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.kanhaji.core.navigation.navigator.LocalNavigator
 import com.kanhaji.core.shell.state.rememberCollapsingTopBarState
 import com.kanhaji.core.shell.ui.ScreenScaffold
 import com.kanhaji.core.shell.ui.SmoothCollapsingTopBar
+import com.kanhaji.core.shell.ui.rememberCollapsingTopBarConnection
 import com.kanhaji.singularity.feature.camera.components.*
+import com.kanhaji.singularity.feature.home.components.FeatureSectionHeader
 import com.kanhaji.singularity.service.AppBridgeService
 
 @Composable
 fun CameraControlScreen() {
     val isPcConnected by AppBridgeService.isPcConnected.collectAsState()
     val isStreaming by AppBridgeService.isCameraStreaming.collectAsState()
+    val isMicActive by AppBridgeService.isCameraMicActive.collectAsState()
     val selectedLens by AppBridgeService.selectedCameraLens.collectAsState()
     val navigator = LocalNavigator.current
+    val scrollState = rememberScrollState()
     val collapsingState = rememberCollapsingTopBarState()
+    val collapsingConnection = rememberCollapsingTopBarConnection(
+        state = collapsingState,
+        canExpand = { scrollState.value == 0 }
+    )
 
     val view = LocalView.current
     DisposableEffect(isStreaming) {
@@ -33,7 +41,8 @@ fun CameraControlScreen() {
     }
 
     ScreenScaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        modifier = Modifier.nestedScroll(collapsingConnection),
+        containerColor = Color.Transparent,
         topBar = {
             SmoothCollapsingTopBar(
                 title = "Continuity Camera",
@@ -47,23 +56,23 @@ fun CameraControlScreen() {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 20.dp, vertical = 12.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .verticalScroll(scrollState)
+                .padding(
+                    top = innerPadding.calculateTopPadding() + 8.dp,
+                    start = 16.dp,
+                    end = 16.dp,
+                    bottom = 32.dp
+                ),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             CameraStatusCard(
                 isPcConnected = isPcConnected,
                 isStreaming = isStreaming,
-                selectedLens = selectedLens
+                selectedLens = selectedLens,
+                isMicActive = isMicActive
             )
 
-            Text(
-                text = "Camera Sensor",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.SemiBold
-            )
+            FeatureSectionHeader("Camera Sensor")
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -71,7 +80,7 @@ fun CameraControlScreen() {
             ) {
                 LensOptionChip(
                     title = "Main (1x)",
-                    subtitle = "Back",
+                    subtitle = "Back Wide",
                     icon = Icons.Outlined.CameraRear,
                     isSelected = selectedLens == "main",
                     modifier = Modifier.weight(1f)
@@ -82,7 +91,7 @@ fun CameraControlScreen() {
 
                 LensOptionChip(
                     title = "Ultra (0.6x)",
-                    subtitle = "Back Wide",
+                    subtitle = "Ultra Wide",
                     icon = Icons.Outlined.ZoomOut,
                     isSelected = selectedLens == "ultrawide",
                     modifier = Modifier.weight(1f)
@@ -103,30 +112,11 @@ fun CameraControlScreen() {
                 }
             }
 
-            Text(
-                text = "Stream Capabilities",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.SemiBold
-            )
+            FeatureSectionHeader("Stream Capabilities")
 
-            StreamFeatureRow(
-                icon = Icons.Outlined.Videocam,
-                title = "Video Output",
-                subtitle = "1080p @ 30 FPS • Hardware H.264 (/dev/video10)"
-            )
-            StreamFeatureRow(
-                icon = Icons.Outlined.Mic,
-                title = "Virtual Microphone",
-                subtitle = "PipeWire node • Echo cancellation"
-            )
-            StreamFeatureRow(
-                icon = Icons.Outlined.Bolt,
-                title = "Ultra-Low Latency",
-                subtitle = "< 30ms • Directly piped to Chromium & Google Meet"
-            )
+            StreamCapabilitiesCard()
 
-            Spacer(modifier = Modifier.weight(1f, fill = false).height(12.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             CameraStreamControls(
                 isPcConnected = isPcConnected,

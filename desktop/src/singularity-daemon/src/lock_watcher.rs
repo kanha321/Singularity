@@ -3,6 +3,7 @@ pub mod adapter;
 pub mod adapters;
 pub mod detector;
 pub mod input_activity;
+pub mod media_sync;
 pub mod proximity;
 pub mod session;
 pub mod socket2;
@@ -12,6 +13,7 @@ pub use action_handler::handle_lock_actions;
 pub use adapter::LockerAdapter;
 pub use detector::resolve_adapter;
 pub use input_activity::InputActivityTracker;
+pub use media_sync::MediaSynchronizer;
 pub use proximity::ProximityLockManager;
 pub use session::*;
 pub use stream::*;
@@ -32,6 +34,7 @@ pub fn start_lock_watcher(
         let notify = Arc::new(Notify::new());
         let _socket2 = socket2::start_socket2_listener(Arc::clone(&notify));
         let mut proximity = ProximityLockManager::new(InputActivityTracker::start());
+        let mut media_sync = MediaSynchronizer::start().await;
 
         let mut last_state = None;
         let mut client: Option<AppBridgeStream> = None;
@@ -69,14 +72,19 @@ pub fn start_lock_watcher(
                 client = AppBridgeStream::connect(&adb_address).await.ok();
             }
 
-            let cam_active = camera.is_streaming().await;
+            let cam_status = camera.status().await;
             let media = crate::media::mpris::get_active_media_state(None, 8920).await;
-            let mut fast_loop = false;
+            let phone_action = media_sync.pop_action();
+            let mut fast_loop = phone_action.is_some();
+            let mut phone_playing = false;
+
             if let Some(ref mut stream) = client {
-                match stream.exchange(current_locked, current_logged_in, &auth_cache, cam_active, media.as_ref()).await {
+                match stream.exchange(current_locked, current_logged_in, &auth_cache, &cam_status, media.as_ref(), phone_action.as_ref()).await {
                     Ok(actions) => {
                         proximity.on_connected(&*adapter).await;
-                        fast_loop = actions.camera.is_some();
+                        fast_loop = fast_loop || actions.camera.is_some() || actions.media_action.is_some();
+                        phone_playing = actions.phone_media.as_ref().map(|m| m.status.eq_ignore_ascii_case("playing")).unwrap_or(false);
+                        media_sync.sync_states(media.as_ref(), actions.phone_media.as_ref()).await;
                         handle_lock_actions(&actions, &*adapter, &auth_cache, &camera, &adb_address).await;
                     }
                     Err(e) => {
@@ -92,7 +100,14 @@ pub fn start_lock_watcher(
 
             proximity.check_inactivity_lock(&*adapter, current_locked).await;
 
-            let sleep_dur = if fast_loop { Duration::from_millis(50) } else { Duration::from_millis(1000) };
+            let is_media_playing = media.as_ref().map(|m| m.status.eq_ignore_ascii_case("playing")).unwrap_or(false) || phone_playing;
+            let sleep_dur = if fast_loop {
+                Duration::from_millis(50)
+            } else if is_media_playing {
+                Duration::from_millis(250)
+            } else {
+                Duration::from_millis(1000)
+            };
             tokio::select! {
                 _ = notify.notified() => {},
                 _ = tokio::time::sleep(sleep_dur) => {},

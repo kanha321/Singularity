@@ -27,6 +27,7 @@ class AppBridgeService : Service() {
         val isPcConnected = AppBridgeState.isPcConnected
         val isPhoneLocked = AppBridgeState.isPhoneLocked
         val isCameraStreaming = AppBridgeState.isCameraStreaming
+        val isCameraMicActive = AppBridgeState.isCameraMicActive
         val selectedCameraLens = AppBridgeState.selectedCameraLens
         val pendingCameraAction = AppBridgeState.pendingCameraAction
         val pendingCameraLens = AppBridgeState.pendingCameraLens

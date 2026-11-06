@@ -7,13 +7,19 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.drawable.BitmapDrawable
 import android.os.Build
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
+import android.util.Log
 import androidx.core.app.NotificationCompat
+import coil.imageLoader
+import coil.request.ImageRequest
 import com.kanhaji.singularity.R
 import com.kanhaji.singularity.feature.media.model.MediaState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 object MediaNotificationHelper {
     const val MEDIA_CHANNEL_ID = "singularity_media_controls_v1"
@@ -117,5 +123,14 @@ object MediaNotificationHelper {
         if (artBitmap != null) notifBuilder.setLargeIcon(artBitmap)
         return notifBuilder.build()
     }
-}
 
+    suspend fun loadBitmap(context: Context, url: String): Bitmap? = withContext(Dispatchers.IO) {
+        try {
+            val req = ImageRequest.Builder(context).data(url).allowHardware(false).build()
+            (context.imageLoader.execute(req).drawable as? BitmapDrawable)?.bitmap
+        } catch (e: Exception) {
+            Log.w("MediaNotificationHelper", "Failed to load album art bitmap: ${e.message}")
+            null
+        }
+    }
+}

@@ -8,6 +8,7 @@ import com.kanhaji.singularity.feature.media.model.MediaState
 import com.kanhaji.singularity.service.AuthResultData
 import com.kanhaji.singularity.service.PendingAuth
 import kotlinx.coroutines.flow.MutableStateFlow
+import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
@@ -22,11 +23,14 @@ object AppBridgeState {
     val isPcConnected = MutableStateFlow<Boolean>(false)
     val isPhoneLocked = MutableStateFlow<Boolean>(false)
     val isCameraStreaming = MutableStateFlow<Boolean>(false)
+    val isCameraMicActive = MutableStateFlow<Boolean>(false)
     val selectedCameraLens = MutableStateFlow<String>("main")
     val pendingCameraAction = AtomicReference<String?>(null)
     val pendingCameraLens = AtomicReference<String?>(null)
     val pendingMediaAction = AtomicReference<MediaAction?>(null)
     val currentMediaState = MutableStateFlow<MediaState?>(null)
+    val currentPhoneMediaState = MutableStateFlow<MediaState?>(null)
+    val pendingPhoneMediaAction = AtomicReference<MediaAction?>(null)
     val pendingUnlockRequest = AtomicBoolean(false)
     val pendingLockRequest = AtomicBoolean(false)
     val pendingLogoutRequest = AtomicBoolean(false)
@@ -39,7 +43,7 @@ object AppBridgeState {
     val isActivityVisible = AtomicBoolean(false)
 
     fun resetPcDisconnected(context: Context? = null) {
-        if (!isPcConnected.value && pcLockState.value == "disconnected") return
+        if (!isPcConnected.value && pcLockState.value == "disconnected" && !isCameraStreaming.value && !isCameraMicActive.value) return
         Log.i(TAG, "Transitioning to DISCONNECTED state: resetting all PC values")
         isPcConnected.value = false
         pcLockState.value = "disconnected"
@@ -52,12 +56,34 @@ object AppBridgeState {
         pendingPowerAction.set(null)
         pendingOpenUrl.set(null)
         isCameraStreaming.value = false
+        isCameraMicActive.value = false
         pendingCameraAction.set(null)
         pendingCameraLens.set(null)
         pendingMediaAction.set(null)
         currentMediaState.value = null
         if (context != null) {
             MediaControlManager.getInstance(context).clearMedia()
+        }
+    }
+
+    fun updateLockState(json: JSONObject) {
+        val locked = json.optBoolean("locked", false)
+        val loggedIn = json.optBoolean("logged_in", json.optBoolean("isLoggedIn", false))
+        pcLockState.value = if (locked) "locked" else "unlocked"
+        pcLoginState.value = loggedIn
+        val host = json.optString("file_server_host", "127.0.0.1")
+        val port = json.optInt("file_server_port", 8920)
+        fileServerUrl.value = "http://$host:$port"
+        val mediaObj = json.optJSONObject("media")
+        currentMediaState.value = if (mediaObj != null) MediaState.fromJson(mediaObj) else null
+
+        val camActive = json.optBoolean("camera_active", false)
+        isCameraStreaming.value = camActive
+        val hasMic = json.optBoolean("camera_has_mic", camActive)
+        isCameraMicActive.value = if (camActive) hasMic else false
+        val lens = json.optString("camera_lens", "")
+        if (camActive && lens.isNotEmpty()) {
+            selectedCameraLens.value = lens
         }
     }
 
