@@ -1,12 +1,14 @@
 mod assets;
 mod auth_cache;
 mod biometric;
+mod camera;
 mod clipboard;
 mod config;
 mod deployer;
 mod error;
 mod file_server;
 mod lock_watcher;
+mod media;
 mod server;
 mod singleton;
 mod storage;
@@ -45,6 +47,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     reg.register(Box::new(CallingFeature::default()));
     reg.register(Box::new(StorageFeature::default()));
     reg.register(Box::new(BiometricFeature::default()));
+    reg.register(Box::new(singularity_core::features::camera::CameraFeature::default()));
     let registry = Arc::new(tokio::sync::RwLock::new(reg));
 
     let storage_tunnel = Arc::new(tokio::sync::Mutex::new(None));
@@ -53,6 +56,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let active_device = Arc::new(tokio::sync::RwLock::new(config.adb_address.clone()));
 
     let auth_cache = auth_cache::new_auth_cache();
+    let camera = camera::CameraSupervisor::new();
 
     let server = IpcServer::bind(
         &socket_path,
@@ -63,6 +67,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Arc::clone(&active_mounts),
         Arc::clone(&has_root),
         Arc::clone(&auth_cache),
+        camera.clone(),
     )?;
 
     let _watcher_handle = match wayland::start_wayland_watcher(clip_tx.clone()) {
@@ -70,8 +75,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(e) => { tracing::warn!(target: "daemon", error = %e, "Wayland clipboard watcher unavailable"); None }
     };
 
-    let _lock_handle = lock_watcher::start_lock_watcher(Arc::clone(&active_device), auth_cache);
+    let _lock_handle = lock_watcher::start_lock_watcher(Arc::clone(&active_device), auth_cache, camera.clone());
     let _file_server_handle = file_server::start_file_server(Arc::clone(&active_device), 8920);
+    let _beacon_handle = transport::discovery::start_beacon_listener(Arc::clone(&active_device));
 
     let supervisor = supervisor::start_supervisor(
         config.adb_address,
@@ -93,6 +99,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             tracing::info!("Received SIGINT, initiating graceful shutdown");
         }
     }
+
+    let _ = camera.stop().await;
 
     let mounts = active_mounts.lock().await.drain(..).collect::<Vec<_>>();
     for mount in mounts {

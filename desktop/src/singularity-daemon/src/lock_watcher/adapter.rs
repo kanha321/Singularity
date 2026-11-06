@@ -18,6 +18,16 @@ pub trait LockerAdapter: Send + Sync {
 
     /// Commands the screen to unlock.
     async fn unlock(&self) -> Result<()>;
+
+    /// Inhibits desktop idle / screen blanking / automatic lock.
+    async fn inhibit_idle(&self) -> Result<()> {
+        Ok(())
+    }
+
+    /// Releases idle inhibition, re-enabling normal timeout behavior.
+    async fn uninhibit_idle(&self) -> Result<()> {
+        Ok(())
+    }
 }
 
 #[cfg(test)]

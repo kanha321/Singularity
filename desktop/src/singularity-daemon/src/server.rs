@@ -1,6 +1,9 @@
 pub mod handler;
 pub mod auth_handler;
+pub mod camera_handler;
+pub mod device_handler;
 pub mod remount_handler;
+pub mod storage_handler;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -9,6 +12,7 @@ use tokio::sync::broadcast::Sender;
 use tokio::sync::{Mutex, RwLock};
 use singularity_core::FeatureRegistry;
 use crate::auth_cache::SharedAuthCache;
+use crate::camera::CameraSupervisor;
 use crate::error::{DaemonError, Result};
 use crate::transport::AdbTunnel;
 
@@ -21,6 +25,7 @@ pub struct IpcServer {
     active_mounts: Arc<Mutex<Vec<PathBuf>>>,
     has_root: Arc<std::sync::atomic::AtomicBool>,
     auth_cache: SharedAuthCache,
+    camera: CameraSupervisor,
 }
 
 impl IpcServer {
@@ -34,6 +39,7 @@ impl IpcServer {
         active_mounts: Arc<Mutex<Vec<PathBuf>>>,
         has_root: Arc<std::sync::atomic::AtomicBool>,
         auth_cache: SharedAuthCache,
+        camera: CameraSupervisor,
     ) -> Result<Self> {
         let path = path.as_ref();
         if path.exists() {
@@ -56,6 +62,7 @@ impl IpcServer {
             active_mounts,
             has_root,
             auth_cache,
+            camera,
         })
     }
 
@@ -70,6 +77,7 @@ impl IpcServer {
                     let active_mounts = Arc::clone(&self.active_mounts);
                     let has_root = Arc::clone(&self.has_root);
                     let auth_cache = Arc::clone(&self.auth_cache);
+                    let camera = self.camera.clone();
 
                     tokio::spawn(async move {
                         if let Err(e) = handler::handle_client(
@@ -81,6 +89,7 @@ impl IpcServer {
                             active_mounts,
                             has_root,
                             auth_cache,
+                            camera,
                         )
                         .await
                         {
@@ -108,6 +117,7 @@ mod tests {
         let active_mounts = Arc::new(Mutex::new(Vec::new()));
         let has_root = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let auth_cache = crate::auth_cache::new_auth_cache();
+        let camera = CameraSupervisor::new();
         let temp_dir = tempfile::tempdir().unwrap();
         let socket_path = temp_dir.path().join("test_singularity.sock");
         let server = IpcServer::bind(
@@ -119,6 +129,7 @@ mod tests {
             active_mounts,
             has_root,
             auth_cache,
+            camera,
         );
         assert!(server.is_ok());
         assert!(socket_path.exists());

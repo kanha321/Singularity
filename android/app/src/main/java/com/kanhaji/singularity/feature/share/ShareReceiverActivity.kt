@@ -4,7 +4,6 @@ import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
-import android.util.Patterns
 import android.widget.Toast
 import com.kanhaji.singularity.service.AppBridgeService
 import kotlinx.coroutines.CoroutineScope
@@ -19,12 +18,16 @@ class ShareReceiverActivity : Activity() {
 
     companion object {
         private const val TAG = "ShareReceiver"
+        private val URL_REGEX = Regex("""(?i)\b(?:https?|ftp)://[^\s<>]+|\b[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:/[^\s<>]*)?""")
 
         fun extractUrl(text: String): String? {
-            val matcher = Patterns.WEB_URL.matcher(text)
-            if (matcher.find()) {
-                val found = matcher.group()
-                return if (found.startsWith("http://") || found.startsWith("https://") || found.startsWith("ftp://")) {
+            val match = URL_REGEX.find(text)
+            if (match != null) {
+                val found = match.value
+                return if (found.startsWith("http://", ignoreCase = true) ||
+                    found.startsWith("https://", ignoreCase = true) ||
+                    found.startsWith("ftp://", ignoreCase = true)
+                ) {
                     found
                 } else {
                     "https://$found"

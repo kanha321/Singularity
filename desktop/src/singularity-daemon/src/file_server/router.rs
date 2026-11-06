@@ -87,6 +87,9 @@ pub async fn handle_http_connection(
             let req_path = params.get("path").map(|s| s.as_str()).unwrap_or("");
             super::thumbnail::serve_thumbnail(req_path, &mut write_half).await?;
         }
+        ("GET", "/api/media/art") => {
+            super::media_router::serve_media_art(&params, &mut write_half).await?;
+        }
         ("POST", "/api/fs/mkdir")
         | ("POST", "/api/fs/rename")
         | ("POST", "/api/fs/delete")

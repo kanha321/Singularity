@@ -1,3 +1,6 @@
+mod camera_cmd;
+mod device_cmd;
+
 use clap::{Parser, Subcommand};
 use singularity_client::{FeatureState, SingularityClient};
 
@@ -12,62 +15,51 @@ struct Cli {
 enum Commands {
     /// Inspect daemon connection and feature statuses
     Status,
-
     /// Push text to device clipboard
-    Clip {
-        /// Text to synchronize
-        text: String,
-    },
-
+    Clip { text: String },
     /// Mount phone storage via Root SFTP and FUSE
-    Mount {
-        /// Remote path on device to mount (e.g. / or /sdcard, default: /data/media/0)
-        path: Option<String>,
-    },
-
+    Mount { path: Option<String> },
     /// Unmount phone storage
     Unmount,
-
     /// Trigger biometric fingerprint authentication on connected phone
     Auth {
-        /// Reason displayed on phone prompt
         #[arg(short, long, default_value = "CLI verification")]
         reason: String,
-
-        /// Timeout in seconds
         #[arg(short, long, default_value_t = 15)]
         timeout: u32,
     },
-
     /// Control telephony and calls
     Call {
         #[command(subcommand)]
         action: CallAction,
     },
-
     /// Open a URL or hyperlink on connected Android device
-    OpenUrl {
-        /// Target URL or link to open
-        url: String,
-    },
-
+    OpenUrl { url: String },
     /// Remount system partitions as read-write or read-only (requires root)
     Remount {
-        /// Remount as read-write (writable)
         #[arg(long, conflicts_with = "ro")]
         rw: bool,
-
-        /// Remount as read-only (protected)
         #[arg(long, conflicts_with = "rw")]
         ro: bool,
     },
+    /// Control continuity camera and phone webcam streaming
+    Camera {
+        #[command(subcommand)]
+        action: camera_cmd::CameraAction,
+    },
+    /// List detected, connected and paired devices
+    Devices,
+    /// Switch active target device by serial or IP
+    Use { serial: String },
+    /// Add a device to the trusted paired whitelist
+    Pair { serial: String },
+    /// Remove a device from the trusted paired whitelist
+    Unpair { serial: String },
 }
 
 #[derive(Subcommand)]
 enum CallAction {
-    /// Answer an incoming telephone call
     Answer,
-    /// Terminate an active or ringing phone call
     End,
 }
 
@@ -88,7 +80,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 for feat in statuses {
                     let (icon, details) = match feat.state {
                         FeatureState::Active => ("🟢", String::new()),
-                        FeatureState::Degraded { reason } => ("🟡", format!("({})", reason)),
+                        FeatureState::Degraded { reason } => ("🟡", format!("({reason})")),
                         FeatureState::Inactive => ("⚪", String::new()),
                     };
                     println!("{:<4} {:<24} {:<12} {}", icon, feat.name, feat.id, details);
@@ -116,14 +108,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Commands::Call { action } => match action {
-            CallAction::Answer => {
-                client.accept_call().await?;
-                println!("Call accepted");
-            }
-            CallAction::End => {
-                client.end_call().await?;
-                println!("Call ended");
-            }
+            CallAction::Answer => { client.accept_call().await?; println!("Call accepted"); }
+            CallAction::End => { client.end_call().await?; println!("Call ended"); }
         },
         Commands::OpenUrl { url } => {
             client.open_url(&url).await?;
@@ -133,11 +119,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let is_rw = !ro;
             let res = client.remount_system(is_rw).await?;
             if is_rw {
-                println!("🔓 System partitions remounted as {}. Run 'singularity remount --ro' when done.", res);
+                println!("🔓 System partitions remounted as {res}. Run 'singularity remount --ro' when done.");
             } else {
-                println!("🔒 System partitions locked as {}.", res);
+                println!("🔒 System partitions locked as {res}.");
             }
         }
+        Commands::Camera { action } => {
+            camera_cmd::handle_camera_cmd(&client, action).await?;
+        }
+        Commands::Devices => device_cmd::handle_devices_cmd(&client).await?,
+        Commands::Use { serial } => device_cmd::handle_use_cmd(&client, &serial).await?,
+        Commands::Pair { serial } => device_cmd::handle_pair_cmd(&client, &serial).await?,
+        Commands::Unpair { serial } => device_cmd::handle_unpair_cmd(&client, &serial).await?,
     }
 
     Ok(())

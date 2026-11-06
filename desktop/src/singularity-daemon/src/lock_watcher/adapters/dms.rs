@@ -46,6 +46,22 @@ impl LockerAdapter for DmsAdapter {
             .await;
         Ok(())
     }
+
+    async fn inhibit_idle(&self) -> Result<()> {
+        let _ = Command::new("dms")
+            .args(["ipc", "call", "inhibit", "enable"])
+            .status()
+            .await;
+        Ok(())
+    }
+
+    async fn uninhibit_idle(&self) -> Result<()> {
+        let _ = Command::new("dms")
+            .args(["ipc", "call", "inhibit", "disable"])
+            .status()
+            .await;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

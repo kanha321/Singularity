@@ -17,12 +17,18 @@ pub enum IpcRequest {
         timeout_secs: u32,
     },
     CancelBiometric,
-    OpenUrl {
-        url: String,
-    },
-    RemountSystem {
-        read_write: bool,
-    },
+    OpenUrl { url: String },
+    RemountSystem { read_write: bool },
+    StartCamera { config: Option<crate::camera::CameraConfig> },
+    StopCamera,
+    SetCameraTorch { enabled: bool },
+    SetCameraZoom { zoom: f32 },
+    SwitchCameraLens { lens: crate::camera::CameraLens },
+    GetCameraStatus,
+    ListDevices,
+    SelectDevice { serial: String },
+    PairDevice { serial: String },
+    UnpairDevice { serial: String },
     Custom {
         feature: String,
         action: String,
@@ -56,6 +62,8 @@ pub enum IpcResponse {
         failed_attempts: u32,
     },
     Custom(serde_json::Value),
+    CameraStatus(crate::camera::CameraStatus),
+    Devices(Vec<crate::device::DeviceEntry>),
     Error(String),
 }
 
@@ -111,5 +119,13 @@ mod tests {
         let remount = IpcRequest::RemountSystem { read_write: true };
         let remount_json = serde_json::to_string(&remount).unwrap();
         assert!(remount_json.contains("RemountSystem"));
+
+        let cam_start = IpcRequest::StartCamera { config: None };
+        let cam_start_json = serde_json::to_string(&cam_start).unwrap();
+        assert!(cam_start_json.contains("StartCamera"));
+
+        let cam_resp = IpcResponse::CameraStatus(crate::camera::CameraStatus::default());
+        let cam_resp_json = serde_json::to_string(&cam_resp).unwrap();
+        assert!(cam_resp_json.contains("CameraStatus"));
     }
 }

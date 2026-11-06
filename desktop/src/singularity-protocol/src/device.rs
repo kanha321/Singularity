@@ -8,6 +8,16 @@ pub struct DeviceInfo {
     pub android_version: String,
 }
 
+/// Device discovered or connected via ADB or network beacon.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeviceEntry {
+    pub serial: String,
+    pub model: Option<String>,
+    pub connection_type: String,
+    pub is_active: bool,
+    pub is_paired: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -22,5 +32,19 @@ mod tests {
         let json = serde_json::to_string(&info).expect("Failed to serialize DeviceInfo");
         let parsed: DeviceInfo = serde_json::from_str(&json).expect("Failed to deserialize DeviceInfo");
         assert_eq!(info, parsed);
+    }
+
+    #[test]
+    fn device_entry_serialization_roundtrip() {
+        let entry = DeviceEntry {
+            serial: "23049PCD8I".into(),
+            model: Some("POCO F5".into()),
+            connection_type: "usb".into(),
+            is_active: true,
+            is_paired: true,
+        };
+        let json = serde_json::to_string(&entry).unwrap();
+        let parsed: DeviceEntry = serde_json::from_str(&json).unwrap();
+        assert_eq!(entry, parsed);
     }
 }

@@ -111,6 +111,10 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <receiver
+            android:name=".feature.media.MediaNotificationReceiver"
+            android:exported="false" />
+
     </application>
 
 </manifest>

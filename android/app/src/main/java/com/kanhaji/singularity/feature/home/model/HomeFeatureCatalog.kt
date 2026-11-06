@@ -4,12 +4,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.PowerSettingsNew
+import androidx.compose.material.icons.outlined.Videocam
 
 object HomeFeatureCatalog {
     fun featureCards(
         onOpenAuth: () -> Unit,
         onOpenPower: () -> Unit,
-        onOpenFiles: () -> Unit
+        onOpenFiles: () -> Unit,
+        onOpenCamera: () -> Unit,
+        isCameraActive: Boolean = false
     ) = listOf(
         FeatureCardModel(
             id = "auth_feature",
@@ -28,6 +31,15 @@ object HomeFeatureCatalog {
             statusText = "Control",
             isHighlighted = true,
             onClick = onOpenPower
+        ),
+        FeatureCardModel(
+            id = "camera_feature",
+            title = "Continuity Camera",
+            subtitle = "Webcam & mic streaming",
+            icon = Icons.Outlined.Videocam,
+            statusText = if (isCameraActive) "Live" else "Webcam",
+            isHighlighted = isCameraActive,
+            onClick = onOpenCamera
         ),
         FeatureCardModel(
             id = "files_feature",

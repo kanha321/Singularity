@@ -7,8 +7,9 @@ use tokio::sync::{Mutex, RwLock};
 use singularity_core::FeatureRegistry;
 use singularity_protocol::{IpcRequest, IpcResponse};
 use crate::auth_cache::SharedAuthCache;
+use crate::camera::CameraSupervisor;
 use crate::error::{DaemonError, Result};
-use crate::storage;
+use crate::server::{auth_handler, camera_handler, device_handler, remount_handler, storage_handler};
 use crate::transport::AdbTunnel;
 
 #[allow(clippy::too_many_arguments)]
@@ -21,6 +22,7 @@ pub async fn handle_client(
     active_mounts: Arc<Mutex<Vec<PathBuf>>>,
     has_root: Arc<std::sync::atomic::AtomicBool>,
     auth_cache: SharedAuthCache,
+    camera: CameraSupervisor,
 ) -> Result<()> {
     let mut len_buf = [0u8; 4];
     stream.read_exact(&mut len_buf).await?;
@@ -43,47 +45,10 @@ pub async fn handle_client(
             IpcResponse::Ok
         }
         IpcRequest::MountStorage { remote_path } => {
-            let is_root = has_root.load(std::sync::atomic::Ordering::SeqCst);
-            if let Some(adb_address) = crate::transport::resolve_or_wait_device(&active_device, 3).await {
-                if let Some(custom) = remote_path {
-                    let target_remote = singularity_core::features::storage::config::canonical_remote_path(&custom);
-                    if target_remote == "/" && !is_root {
-                        IpcResponse::Error("Device is not rooted (KernelSU/su required to mount root /)".into())
-                    } else {
-                        let mount_point = if target_remote == "/" {
-                            PathBuf::from("/mnt/root")
-                        } else {
-                            PathBuf::from("/mnt/phone")
-                        };
-                        if let Err(e) = storage::ensure_device_storage_ready(&adb_address).await {
-                            IpcResponse::Error(format!("Failed to prepare phone storage daemon: {}", e))
-                        } else {
-                            match storage::mount_phone(&adb_address, &target_remote, &mount_point) {
-                                Ok(()) => {
-                                    active_mounts.lock().await.push(mount_point.clone());
-                                    IpcResponse::StorageMounted { mount_point: mount_point.to_string_lossy().to_string() }
-                                }
-                                Err(e) => IpcResponse::Error(format!("Failed to mount storage: {}", e)),
-                            }
-                        }
-                    }
-                } else {
-                    match storage::mount_phone_storage(&adb_address, false, is_root, Arc::clone(&active_mounts)).await {
-                        Ok(points) => IpcResponse::StorageMounted { mount_point: points },
-                        Err(e) => IpcResponse::Error(format!("Failed to mount storage: {}", e)),
-                    }
-                }
-            } else {
-                IpcResponse::Error("No Android device detected on network".into())
-            }
+            storage_handler::handle_mount_storage(&active_device, &has_root, &active_mounts, remote_path).await
         }
         IpcRequest::UnmountStorage => {
-            let mounts = active_mounts.lock().await.drain(..).collect::<Vec<_>>();
-            for mount_point in mounts {
-                let _ = storage::unmount_phone(&mount_point);
-            }
-            *storage_tunnel.lock().await = None;
-            IpcResponse::StorageUnmounted
+            storage_handler::handle_unmount_storage(&active_mounts, &storage_tunnel).await
         }
         IpcRequest::AcceptCall => {
             tracing::info!(target: "ipc_server", "Accepting call via ShellBridge");
@@ -94,16 +59,9 @@ pub async fn handle_client(
             IpcResponse::Ok
         }
         IpcRequest::AuthenticateBiometric { reason, timeout_secs } => {
-            crate::server::auth_handler::handle_biometric(
-                &mut stream,
-                reason,
-                timeout_secs,
-                &auth_cache,
-                &active_device,
-            ).await?
+            auth_handler::handle_biometric(&mut stream, reason, timeout_secs, &auth_cache, &active_device).await?
         }
         IpcRequest::CancelBiometric => {
-            tracing::info!(target: "ipc_server", "Processing cancel biometric request");
             let dev = active_device.read().await.clone();
             if dev != "auto" {
                 let _ = crate::biometric::cancel(&dev).await;
@@ -124,8 +82,30 @@ pub async fn handle_client(
             }
         }
         IpcRequest::RemountSystem { read_write } => {
-            crate::server::remount_handler::handle_remount(&active_device, &has_root, read_write).await
+            remount_handler::handle_remount(&active_device, &has_root, read_write).await
         }
+        IpcRequest::StartCamera { config } => {
+            camera_handler::handle_start_camera(&active_device, &camera, config).await
+        }
+        IpcRequest::StopCamera => {
+            camera_handler::handle_stop_camera(&camera).await
+        }
+        IpcRequest::SetCameraTorch { enabled } => {
+            camera_handler::handle_set_torch(&active_device, &camera, enabled).await
+        }
+        IpcRequest::SetCameraZoom { zoom } => {
+            camera_handler::handle_set_zoom(&camera, zoom).await
+        }
+        IpcRequest::SwitchCameraLens { lens } => {
+            camera_handler::handle_switch_lens(&active_device, &camera, lens).await
+        }
+        IpcRequest::GetCameraStatus => {
+            camera_handler::handle_get_status(&camera).await
+        }
+        IpcRequest::ListDevices => device_handler::handle_list_devices(&active_device).await,
+        IpcRequest::SelectDevice { serial } => device_handler::handle_select_device(&active_device, &serial).await,
+        IpcRequest::PairDevice { serial } => device_handler::handle_pair_device(&serial).await,
+        IpcRequest::UnpairDevice { serial } => device_handler::handle_unpair_device(&serial).await,
         IpcRequest::Custom { .. } => IpcResponse::Ok,
     };
 

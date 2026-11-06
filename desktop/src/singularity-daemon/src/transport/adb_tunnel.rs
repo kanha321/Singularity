@@ -17,17 +17,31 @@ pub struct AdbTunnel {
 }
 
 impl AdbTunnel {
-    /// Connects to a local UNIX domain socket forward, establishing the forward rule if not already active.
+    pub async fn cleanup_unix(serial: &str, abstract_socket: &str) {
+        let uid = unsafe { libc::getuid() };
+        let name = abstract_socket.strip_prefix("singularity_").unwrap_or(abstract_socket);
+        let socket_path = PathBuf::from(format!("/run/user/{}/singularity_{}.sock", uid, name));
+        let _ = std::fs::remove_file(&socket_path);
+        let _ = Command::new("adb")
+            .args(["-s", serial, "forward", "--remove", &format!("localfilesystem:{}", socket_path.display())])
+            .status()
+            .await;
+        tracing::debug!(target: "adb_tunnel", serial = %serial, "Cleaned up ADB UNIX forward & socket");
+    }
+
+    /// Connects to a local UNIX domain socket forward, establishing the forward rule if not active.
     pub async fn connect_unix(serial: &str, abstract_socket: &str) -> Result<tokio::net::UnixStream> {
         let uid = unsafe { libc::getuid() };
         let name = abstract_socket.strip_prefix("singularity_").unwrap_or(abstract_socket);
         let socket_path = PathBuf::from(format!("/run/user/{}/singularity_{}.sock", uid, name));
 
-        if let Ok(stream) = tokio::net::UnixStream::connect(&socket_path).await {
-            return Ok(stream);
+        if socket_path.exists() {
+            if let Ok(stream) = tokio::net::UnixStream::connect(&socket_path).await {
+                return Ok(stream);
+            }
+            Self::cleanup_unix(serial, abstract_socket).await;
         }
 
-        let _ = std::fs::remove_file(&socket_path);
         let output = Command::new("adb")
             .args(["-s", serial, "forward", &format!("localfilesystem:{}", socket_path.display()), &format!("localabstract:{}", abstract_socket)])
             .output().await?;
@@ -53,22 +67,6 @@ impl AdbTunnel {
         }
         let port = parse_forward_port(&String::from_utf8_lossy(&output.stdout))?;
         tracing::info!(target: "adb_tunnel", serial = %serial, port = port, abstract_socket = %abstract_socket, "ADB port forward established");
-        Ok(Self { serial: serial.to_string(), target: TunnelTarget::Tcp(port) })
-    }
-
-    /// Establishes dynamic port forwarding over ADB to a target TCP port on the device (tcp:0 -> tcp:TARGET_PORT).
-    #[allow(dead_code)]
-    pub async fn forward_tcp(serial: &str, target_port: u16) -> Result<Self> {
-        let output = Command::new("adb")
-            .args(["-s", serial, "forward", "tcp:0", &format!("tcp:{}", target_port)])
-            .output().await?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(DaemonError::AdbTunnel(format!("Failed forward: {}", stderr.trim())));
-        }
-        let port = parse_forward_port(&String::from_utf8_lossy(&output.stdout))?;
-        tracing::info!(target: "adb_tunnel", serial = %serial, port = port, target_port, "ADB TCP forward established");
         Ok(Self { serial: serial.to_string(), target: TunnelTarget::Tcp(port) })
     }
 
@@ -126,14 +124,12 @@ mod tests {
 
     #[test]
     fn parse_forward_port_extracts_clean_integer() {
-        let raw = "42007\n";
-        assert_eq!(parse_forward_port(raw).unwrap(), 42007);
+        assert_eq!(parse_forward_port("42007\n").unwrap(), 42007);
     }
 
     #[test]
     fn parse_forward_port_rejects_error_strings() {
-        let raw = "error: device '10.235.203.184:5555' not found\n";
-        assert!(parse_forward_port(raw).is_err());
+        assert!(parse_forward_port("error: device not found\n").is_err());
     }
 
     #[test]
@@ -141,9 +137,5 @@ mod tests {
         let tcp = AdbTunnel { serial: "test".into(), target: TunnelTarget::Tcp(42007) };
         assert_eq!(tcp.local_port(), 42007);
         assert_eq!(tcp.socket_path(), None);
-
-        let unix = AdbTunnel { serial: "test".into(), target: TunnelTarget::Unix(PathBuf::from("/tmp/singularity.sock")) };
-        assert_eq!(unix.local_port(), 0);
-        assert_eq!(unix.socket_path(), Some(Path::new("/tmp/singularity.sock")));
     }
 }

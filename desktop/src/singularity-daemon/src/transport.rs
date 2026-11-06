@@ -1,5 +1,7 @@
 pub mod adb_tunnel;
 pub mod device_resolver;
+pub mod discovery;
+pub mod pairing;
 pub mod runner;
 pub mod session;
 

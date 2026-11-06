@@ -41,6 +41,14 @@ object PowerControlsNavScreen : NavScreen {
 }
 
 @Serializable
+object CameraControlNavScreen : NavScreen {
+    @Composable
+    override fun Content() {
+        com.kanhaji.singularity.feature.camera.CameraControlScreen()
+    }
+}
+
+@Serializable
 data class FileBrowserNavScreen(val path: String = "~") : NavScreen {
     @Composable
     override fun Content() {

@@ -7,6 +7,7 @@ pub mod browser_router;
 pub mod folder_size;
 pub mod fs_ops;
 pub mod listener;
+pub mod media_router;
 pub mod mut_ops;
 pub mod mut_router;
 pub mod query;

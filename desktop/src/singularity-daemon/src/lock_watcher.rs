@@ -1,12 +1,18 @@
+pub mod action_handler;
 pub mod adapter;
 pub mod adapters;
 pub mod detector;
+pub mod input_activity;
+pub mod proximity;
 pub mod session;
 pub mod socket2;
 pub mod stream;
 
+pub use action_handler::handle_lock_actions;
 pub use adapter::LockerAdapter;
 pub use detector::resolve_adapter;
+pub use input_activity::InputActivityTracker;
+pub use proximity::ProximityLockManager;
 pub use session::*;
 pub use stream::*;
 
@@ -14,15 +20,18 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{Notify, RwLock};
 use crate::auth_cache::SharedAuthCache;
+use crate::camera::CameraSupervisor;
 
 pub fn start_lock_watcher(
     active_device: Arc<RwLock<String>>,
     auth_cache: SharedAuthCache,
+    camera: CameraSupervisor,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let adapter = resolve_adapter(None).await;
         let notify = Arc::new(Notify::new());
         let _socket2 = socket2::start_socket2_listener(Arc::clone(&notify));
+        let mut proximity = ProximityLockManager::new(InputActivityTracker::start());
 
         let mut last_state = None;
         let mut client: Option<AppBridgeStream> = None;
@@ -32,6 +41,7 @@ pub fn start_lock_watcher(
             let adb_address = active_device.read().await.clone();
             if adb_address == "auto" {
                 client = None;
+                proximity.on_disconnected(&*adapter).await;
                 tokio::time::sleep(Duration::from_millis(500)).await;
                 continue;
             }
@@ -59,52 +69,33 @@ pub fn start_lock_watcher(
                 client = AppBridgeStream::connect(&adb_address).await.ok();
             }
 
+            let cam_active = camera.is_streaming().await;
+            let media = crate::media::mpris::get_active_media_state(None, 8920).await;
+            let mut fast_loop = false;
             if let Some(ref mut stream) = client {
-                match stream.exchange(current_locked, current_logged_in, &auth_cache).await {
+                match stream.exchange(current_locked, current_logged_in, &auth_cache, cam_active, media.as_ref()).await {
                     Ok(actions) => {
-                        if let Some(url) = actions.open_url {
-                            tracing::info!(target: "lock_watcher", %url, "Opening URL on desktop requested by device");
-                            tokio::spawn(async move {
-                                let _ = tokio::process::Command::new("xdg-open").arg(&url).status().await;
-                            });
-                        }
-                        if actions.lock {
-                            trigger_pc_lock(&*adapter).await;
-                        }
-                        if actions.logout {
-                            trigger_pc_logout().await;
-                        }
-                        if let Some(ref power) = actions.power {
-                            match power.as_str() {
-                                "reboot" => trigger_pc_reboot().await,
-                                "shutdown" => trigger_pc_shutdown().await,
-                                "logout" => trigger_pc_logout().await,
-                                "suspend" => trigger_pc_suspend(&*adapter).await,
-                                "hibernate" => trigger_pc_hibernate(&*adapter).await,
-                                other => tracing::warn!(target: "lock_watcher", "Unknown power action: {}", other),
-                            }
-                        }
-                        if actions.unlock {
-                            let cache = auth_cache.read().await;
-                            let denied = cache.is_denied("unlock") || cache.is_snoozed();
-                            drop(cache);
-                            if denied {
-                                tracing::warn!(target: "lock_watcher", "Ignored unlock request: unlock is denied or snoozed");
-                            } else {
-                                trigger_pc_unlock(&*adapter).await;
-                            }
-                        }
+                        proximity.on_connected(&*adapter).await;
+                        fast_loop = actions.camera.is_some();
+                        handle_lock_actions(&actions, &*adapter, &auth_cache, &camera, &adb_address).await;
                     }
                     Err(e) => {
                         tracing::debug!(target: "lock_watcher", "AppBridge socket dropped: {}, will reconnect", e);
                         client = None;
+                        crate::transport::AdbTunnel::cleanup_unix(&adb_address, "singularity_app").await;
+                        proximity.on_disconnected(&*adapter).await;
                     }
                 }
+            } else {
+                proximity.on_disconnected(&*adapter).await;
             }
 
+            proximity.check_inactivity_lock(&*adapter, current_locked).await;
+
+            let sleep_dur = if fast_loop { Duration::from_millis(50) } else { Duration::from_millis(1000) };
             tokio::select! {
                 _ = notify.notified() => {},
-                _ = tokio::time::sleep(Duration::from_millis(1000)) => {},
+                _ = tokio::time::sleep(sleep_dur) => {},
             }
         }
     })
@@ -112,8 +103,6 @@ pub fn start_lock_watcher(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn parse_lock_json_matches_expected() {
         let json = serde_json::json!({
@@ -123,16 +112,5 @@ mod tests {
         });
         assert_eq!(json["locked"], true);
         assert_eq!(json["request_lock"], true);
-        assert_eq!(json["request_power"], "suspend");
-    }
-
-    #[test]
-    fn default_lock_actions_has_none_power() {
-        let actions = LockActions::default();
-        assert!(!actions.unlock);
-        assert!(!actions.lock);
-        assert!(!actions.logout);
-        assert_eq!(actions.power, None);
-        assert_eq!(actions.open_url, None);
     }
 }

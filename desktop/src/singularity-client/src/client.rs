@@ -5,7 +5,7 @@ use crate::error::{ClientError, Result};
 use crate::framed::{read_framed, write_framed};
 
 pub struct SingularityClient {
-    socket_path: PathBuf,
+    pub(crate) socket_path: PathBuf,
 }
 
 impl SingularityClient {

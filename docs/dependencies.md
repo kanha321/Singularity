@@ -31,6 +31,7 @@ These external tools unlock specific convergence modules. The daemon detects the
 | **`madbfs` / `fuse3`** | `madbfs-bin`, `fuse3` | **Network Storage** | Native ADB FUSE transparent mounting of phone storage to `/mnt/phone` on Arch Linux (rootless). |
 | **`rg` / `fd`** | `ripgrep`, `fd` | **Blazing Search** | Sub-millisecond typeahead filesystem search across laptop drives. |
 | **`ffmpeg`** | `ffmpeg` | **File Previews & Thumbnails** | Rapid video keyframe extraction and image downscaling for 128x128 cached thumbnails. |
+| **`dms`** | `dms` (Dux Shell) | **Desktop Lock & Proximity** | IPC session locking (`dms ipc call lock lock/isLocked`) and keep-awake idle inhibition (`dms ipc call inhibit enable/disable`). |
 
 ---
 

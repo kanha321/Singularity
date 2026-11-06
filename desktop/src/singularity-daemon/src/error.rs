@@ -26,6 +26,9 @@ pub enum DaemonError {
     #[error("Storage error: {0}")]
     Storage(String),
 
+    #[error("Camera error: {0}")]
+    Camera(String),
+
     #[error("Singleton violation: {0}")]
     AlreadyRunning(String),
 }
