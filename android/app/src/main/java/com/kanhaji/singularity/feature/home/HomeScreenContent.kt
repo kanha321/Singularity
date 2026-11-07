@@ -20,6 +20,7 @@ import com.kanhaji.core.shell.state.rememberCollapsingTopBarState
 import com.kanhaji.core.shell.ui.ScreenScaffold
 import com.kanhaji.core.shell.ui.SmoothCollapsingTopBar
 import com.kanhaji.core.shell.ui.rememberCollapsingTopBarConnection
+import com.kanhaji.singularity.feature.audio.ui.AudioOutputBottomSheet
 import com.kanhaji.singularity.feature.home.components.*
 import com.kanhaji.singularity.feature.home.model.HomeFeatureCatalog
 import com.kanhaji.singularity.navigation.AuthSettingsNavScreen
@@ -28,6 +29,7 @@ import com.kanhaji.singularity.navigation.FileBrowserNavScreen
 import com.kanhaji.singularity.navigation.PowerControlsNavScreen
 import com.kanhaji.singularity.navigation.SettingsNavScreen
 import com.kanhaji.singularity.service.AppBridgeService
+import com.kanhaji.singularity.service.bridge.AppBridgeState
 import com.kanhaji.singularity.ui.components.AppSnackbar
 
 @Composable
@@ -38,6 +40,11 @@ fun HomeScreenContent() {
     val isPcLocked = pcLockState == "locked"
     val isLoggedIn by AppBridgeService.pcLoginState.collectAsState()
     val isCameraStreaming by AppBridgeService.isCameraStreaming.collectAsState()
+    val audioSinks by AppBridgeState.availableLaptopAudioSinks.collectAsState()
+    val selectedAudioRoute by AppBridgeState.selectedAudioRoute.collectAsState()
+    val isListeningToLaptop by AppBridgeState.isListeningToLaptop.collectAsState()
+    val activeAudioRoute by AppBridgeState.activeAudioRoute.collectAsState()
+    var showAudioSheet by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     val navigator = LocalNavigator.current
@@ -99,6 +106,14 @@ fun HomeScreenContent() {
                 }
             }
 
+            val isRoutingToLaptop = selectedAudioRoute != null && selectedAudioRoute != "phone"
+            val hasActiveOutput = activeAudioRoute != null && activeAudioRoute!!.isPlaying
+            if (isPcConnected && (isRoutingToLaptop || isListeningToLaptop || hasActiveOutput)) {
+                item(span = { GridItemSpan(2) }) {
+                    AudioOutputPill(selectedRoute = selectedAudioRoute, sinks = audioSinks, onClick = { showAudioSheet = true })
+                }
+            }
+
             item(span = { GridItemSpan(2) }) { FeatureSectionHeader("Features") }
             items(
                 HomeFeatureCatalog.featureCards(
@@ -106,11 +121,21 @@ fun HomeScreenContent() {
                     onOpenPower = { navigator.navigate(PowerControlsNavScreen) },
                     onOpenFiles = { navigator.navigate(FileBrowserNavScreen()) },
                     onOpenCamera = { navigator.navigate(CameraControlNavScreen) },
+                    onOpenAudio = { showAudioSheet = true },
+                    audioSubtitle = when {
+                        isListeningToLaptop -> "Listening to PC sound"
+                        isRoutingToLaptop -> audioSinks.find { it.name == selectedAudioRoute }?.nick ?: "Laptop audio"
+                        else -> "Laptop speakers & displays"
+                    },
                     isCameraActive = isCameraStreaming
                 ),
                 key = { it.id },
                 span = { GridItemSpan(1) }
             ) { FeatureGridCard(it) }
         }
+    }
+
+    if (showAudioSheet) {
+        AudioOutputBottomSheet(onDismiss = { showAudioSheet = false })
     }
 }

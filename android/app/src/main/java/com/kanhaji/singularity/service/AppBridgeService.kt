@@ -38,23 +38,19 @@ class AppBridgeService : Service() {
             LockTransitionHelper.reset()
             if (context != null) AppBridgeNotificationHelper.dismissPcLockedNotification(context)
         }
-        fun requestPcUnlock() = AppBridgeState.requestPcUnlock()
-        fun requestPcLock() = AppBridgeState.requestPcLock()
-        fun requestPcLogout() = AppBridgeState.requestPcLogout()
-        fun requestPcLogin() = AppBridgeState.requestPcLogin()
+        fun requestPcUnlock() = AppBridgeState.requestPcUnlock(); fun requestPcLock() = AppBridgeState.requestPcLock()
+        fun requestPcLogout() = AppBridgeState.requestPcLogout(); fun requestPcLogin() = AppBridgeState.requestPcLogin()
         fun requestPowerAction(action: String) = AppBridgeState.requestPowerAction(action)
         fun requestOpenUrlOnDesktop(url: String) = AppBridgeState.requestOpenUrlOnDesktop(url)
         fun requestStartCamera(lens: String = "main") = AppBridgeState.requestStartCamera(lens)
-        fun requestStopCamera() = AppBridgeState.requestStopCamera()
-        fun requestSwitchLens(lens: String) = AppBridgeState.requestSwitchLens(lens)
+        fun requestStopCamera() = AppBridgeState.requestStopCamera(); fun requestSwitchLens(lens: String) = AppBridgeState.requestSwitchLens(lens)
         fun pushAuthSettings(s: com.kanhaji.singularity.feature.auth.model.AuthSettings) { Log.i(TAG, "Settings: ${s.toJson()}") }
         fun dismissPcLockedNotification(ctx: Context) = AppBridgeNotificationHelper.dismissPcLockedNotification(ctx)
         fun showPcLockedNotification(ctx: Context, isLogin: Boolean = false, fullScreen: Boolean = false) =
             AppBridgeNotificationHelper.showPcLockedNotification(ctx, isLogin, fullScreen)
         fun reportBiometricProgress(e: String, a: Int, m: String? = null) = BiometricAuthBridge.reportBiometricProgress(e, a, m)
         fun reportBiometricResult(s: Boolean, e: String?, a: Int = 0, l: Boolean = false) = BiometricAuthBridge.reportBiometricResult(s, e, a, l)
-        fun onBiometricPromptDismissed(ctx: Context) = BiometricAuthBridge.onBiometricPromptDismissed(ctx)
-        fun rejectActiveAuth(reason: String = "User rejected in app") = BiometricAuthBridge.rejectActiveAuth(reason)
+        fun onBiometricPromptDismissed(ctx: Context) = BiometricAuthBridge.onBiometricPromptDismissed(ctx); fun rejectActiveAuth(reason: String = "User rejected in app") = BiometricAuthBridge.rejectActiveAuth(reason)
         fun relaunchBiometricPrompt(ctx: Context) = BiometricAuthBridge.relaunchBiometricPrompt(ctx)
         fun start(ctx: Context) {
             val intent = Intent(ctx, AppBridgeService::class.java)
@@ -104,6 +100,7 @@ class AppBridgeService : Service() {
         }
         startConnectionWatchdog()
         udpBeacon.start(serviceScope)
+        com.kanhaji.singularity.feature.audio.stream.AudioStreamClient.instance.initialize(serviceScope)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -117,6 +114,7 @@ class AppBridgeService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        com.kanhaji.singularity.feature.audio.stream.AudioStreamClient.instance.release()
         udpBeacon.stop()
         socketServer.close()
         serviceScope.cancel()

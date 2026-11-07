@@ -68,38 +68,28 @@ object MediaNotificationHelper {
         return builder.build()
     }
 
+    private fun broadcastPi(context: Context, code: Int, action: String, player: String? = null): PendingIntent =
+        PendingIntent.getBroadcast(
+            context, code,
+            Intent(context, MediaNotificationReceiver::class.java).apply {
+                this.action = action
+                if (player != null) putExtra(MediaNotificationReceiver.EXTRA_PLAYER, player)
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
     fun buildNotification(
         context: Context,
         state: MediaState,
         artBitmap: Bitmap?,
         token: MediaSessionCompat.Token
     ): Notification {
-        val piPrev = PendingIntent.getBroadcast(
-            context, 101,
-            Intent(context, MediaNotificationReceiver::class.java).apply {
-                action = MediaNotificationReceiver.ACTION_PREVIOUS
-                putExtra(MediaNotificationReceiver.EXTRA_PLAYER, state.player)
-            },
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val piPlayPause = PendingIntent.getBroadcast(
-            context, 102,
-            Intent(context, MediaNotificationReceiver::class.java).apply {
-                action = if (state.isPlaying) MediaNotificationReceiver.ACTION_PAUSE else MediaNotificationReceiver.ACTION_PLAY
-                putExtra(MediaNotificationReceiver.EXTRA_PLAYER, state.player)
-            },
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val piNext = PendingIntent.getBroadcast(
-            context, 103,
-            Intent(context, MediaNotificationReceiver::class.java).apply {
-                action = MediaNotificationReceiver.ACTION_NEXT
-                putExtra(MediaNotificationReceiver.EXTRA_PLAYER, state.player)
-            },
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+        val piPrev = broadcastPi(context, 101, MediaNotificationReceiver.ACTION_PREVIOUS, state.player)
+        val playAction = if (state.isPlaying) MediaNotificationReceiver.ACTION_PAUSE else MediaNotificationReceiver.ACTION_PLAY
+        val piPlayPause = broadcastPi(context, 102, playAction, state.player)
+        val piNext = broadcastPi(context, 103, MediaNotificationReceiver.ACTION_NEXT, state.player)
+        val piVolDown = broadcastPi(context, 104, MediaNotificationReceiver.ACTION_VOLUME_DOWN)
+        val piVolUp = broadcastPi(context, 105, MediaNotificationReceiver.ACTION_VOLUME_UP)
 
         val playPauseIcon = if (state.isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
         val playPauseText = if (state.isPlaying) "Pause" else "Play"
@@ -119,6 +109,8 @@ object MediaNotificationHelper {
             .addAction(android.R.drawable.ic_media_previous, "Previous", piPrev)
             .addAction(playPauseIcon, playPauseText, piPlayPause)
             .addAction(android.R.drawable.ic_media_next, "Next", piNext)
+            .addAction(R.drawable.ic_volume_down, "Vol -", piVolDown)
+            .addAction(R.drawable.ic_volume_up, "Vol +", piVolUp)
 
         if (artBitmap != null) notifBuilder.setLargeIcon(artBitmap)
         return notifBuilder.build()

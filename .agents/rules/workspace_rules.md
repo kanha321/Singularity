@@ -71,6 +71,10 @@ Before executing ANY task, proposing ANY design, writing ANY code, or replying t
 - **Integration Tests:** Cross-module pipeline tests go into crate `tests/` directories.
 - **Transport Mocking:** Keep bridges fakeable (`FakeBridge`, `FakeTransport`) for deterministic offline testing without requiring a live device.
 - **Descriptive Naming:** `<function>_<expected_behavior>[_<condition>]`.
+- **Strict Ban on Synthetic ADB Input & Screencaps (CRITICAL):**
+  - **NEVER** run `adb shell input` commands (`tap`, `keyevent`, `swipe`, `text`, etc.).
+  - **NEVER** run `adb screencap` or `adb exec-out screencap` to inspect the device screen.
+  - **User-Driven Testing with Log Recording:** When testing on live hardware, explain the required action to the user while monitoring logs (`adb logcat`, daemon journalctl, PipeWire streams) to observe and verify the state transitions.
 
 ---
 

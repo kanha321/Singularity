@@ -1,8 +1,11 @@
 use std::io::Read;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::thread;
+use std::time::Duration;
 use tokio::sync::broadcast::Sender;
 use wl_clipboard_rs::paste::Seat;
-use wl_clipboard_rs::watch::{CancelHandle, ClipboardEvent, ClipboardType, Watcher};
+use wl_clipboard_rs::watch::{ClipboardEvent, ClipboardType, Watcher};
 
 /// Inspects available MIME types and returns the best candidate for plain text extraction.
 pub fn select_preferred_mime_type(mime_types: &[String]) -> Option<&str> {
@@ -25,66 +28,79 @@ pub fn select_preferred_mime_type(mime_types: &[String]) -> Option<&str> {
 
 /// Handle allowing caller to cleanly terminate the background Wayland watcher thread.
 pub struct WaylandWatcherHandle {
-    _cancel_handle: CancelHandle,
+    running: Arc<AtomicBool>,
 }
 
 impl WaylandWatcherHandle {
     #[allow(dead_code)]
     pub fn stop(&self) {
-        self._cancel_handle.cancel();
+        self.running.store(false, Ordering::SeqCst);
     }
 }
 
 /// Spawns a dedicated thread watching for native Wayland selection changes.
 pub fn start_wayland_watcher(tx: Sender<String>) -> crate::error::Result<WaylandWatcherHandle> {
-    let mut watcher = Watcher::new(ClipboardType::Regular, Seat::Unspecified)?;
-    let cancel_handle = watcher.cancel_handle();
-    let handle = WaylandWatcherHandle {
-        _cancel_handle: cancel_handle.clone(),
-    };
+    let running = Arc::new(AtomicBool::new(true));
+    let running_thread = Arc::clone(&running);
 
     thread::Builder::new()
         .name("wayland-clipboard-watcher".into())
         .spawn(move || {
             tracing::info!(target: "wayland_watcher", "Wayland clipboard watcher thread started");
-            loop {
-                match watcher.next_event() {
-                    Ok(Some(ClipboardEvent::Changed { mime_types, mut offer, .. })) => {
-                        if let Some(mime) = select_preferred_mime_type(&mime_types) {
-                            match offer.receive(mime) {
-                                Ok(mut reader) => {
-                                    let mut content = String::new();
-                                    if let Err(e) = reader.read_to_string(&mut content) {
-                                        tracing::warn!(target: "wayland_watcher", error = %e, "Failed reading text from offer pipe");
-                                        continue;
+            while running_thread.load(Ordering::SeqCst) {
+                super::ensure_wayland_env();
+                let mut watcher = match Watcher::new(ClipboardType::Regular, Seat::Unspecified) {
+                    Ok(w) => {
+                        tracing::info!(target: "wayland_watcher", "Connected to Wayland clipboard watcher");
+                        w
+                    }
+                    Err(e) => {
+                        tracing::debug!(target: "wayland_watcher", error = %e, "Wayland compositor not ready; retrying in 2s");
+                        thread::sleep(Duration::from_secs(2));
+                        continue;
+                    }
+                };
+
+                while running_thread.load(Ordering::SeqCst) {
+                    match watcher.next_event() {
+                        Ok(Some(ClipboardEvent::Changed { mime_types, mut offer, .. })) => {
+                            if let Some(mime) = select_preferred_mime_type(&mime_types) {
+                                match offer.receive(mime) {
+                                    Ok(mut reader) => {
+                                        let mut content = String::new();
+                                        if let Err(e) = reader.read_to_string(&mut content) {
+                                            tracing::warn!(target: "wayland_watcher", error = %e, "Failed reading text from offer pipe");
+                                            continue;
+                                        }
+                                        if !content.is_empty() {
+                                            let _ = tx.send(content);
+                                        }
                                     }
-                                    if !content.is_empty() {
-                                        let _ = tx.send(content);
+                                    Err(e) => {
+                                        tracing::debug!(target: "wayland_watcher", error = %e, mime = mime, "Failed to receive offer stream");
                                     }
-                                }
-                                Err(e) => {
-                                    tracing::debug!(target: "wayland_watcher", error = %e, mime = mime, "Failed to receive offer stream");
                                 }
                             }
                         }
-                    }
-                    Ok(Some(ClipboardEvent::Cleared { .. })) => {
-                        tracing::trace!(target: "wayland_watcher", "Clipboard cleared event ignored");
-                    }
-                    Ok(None) => {
-                        tracing::info!(target: "wayland_watcher", "Watcher cancelled gracefully");
-                        break;
-                    }
-                    Err(e) => {
-                        tracing::error!(target: "wayland_watcher", error = %e, "Error waiting for Wayland clipboard event");
-                        break;
+                        Ok(Some(ClipboardEvent::Cleared { .. })) => {
+                            tracing::trace!(target: "wayland_watcher", "Clipboard cleared event ignored");
+                        }
+                        Ok(None) => {
+                            tracing::info!(target: "wayland_watcher", "Watcher cancelled gracefully");
+                            return;
+                        }
+                        Err(e) => {
+                            tracing::warn!(target: "wayland_watcher", error = %e, "Wayland clipboard event stream disconnected; reconnecting");
+                            thread::sleep(Duration::from_millis(1000));
+                            break;
+                        }
                     }
                 }
             }
             tracing::info!(target: "wayland_watcher", "Wayland clipboard watcher thread terminated");
         })?;
 
-    Ok(handle)
+    Ok(WaylandWatcherHandle { running })
 }
 
 #[cfg(test)]

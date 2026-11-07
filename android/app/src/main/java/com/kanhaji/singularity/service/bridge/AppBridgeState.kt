@@ -2,6 +2,8 @@ package com.kanhaji.singularity.service.bridge
 
 import android.content.Context
 import android.util.Log
+import com.kanhaji.singularity.feature.audio.model.ActiveAudioRouteInfo
+import com.kanhaji.singularity.feature.audio.model.LaptopAudioSink
 import com.kanhaji.singularity.feature.media.MediaControlManager
 import com.kanhaji.singularity.feature.media.model.MediaAction
 import com.kanhaji.singularity.feature.media.model.MediaState
@@ -31,6 +33,11 @@ object AppBridgeState {
     val currentMediaState = MutableStateFlow<MediaState?>(null)
     val currentPhoneMediaState = MutableStateFlow<MediaState?>(null)
     val pendingPhoneMediaAction = AtomicReference<MediaAction?>(null)
+    val availableLaptopAudioSinks = MutableStateFlow<List<LaptopAudioSink>>(emptyList())
+    val selectedAudioRoute = MutableStateFlow<String?>("phone")
+    val activeAudioRoute = MutableStateFlow<ActiveAudioRouteInfo?>(null)
+    val isListeningToLaptop = MutableStateFlow<Boolean>(false)
+    val pendingAudioRouteCommand = AtomicReference<JSONObject?>(null)
     val pendingUnlockRequest = AtomicBoolean(false)
     val pendingLockRequest = AtomicBoolean(false)
     val pendingLogoutRequest = AtomicBoolean(false)
@@ -38,9 +45,7 @@ object AppBridgeState {
     val pendingPowerAction = AtomicReference<String?>(null)
     val pendingOpenUrl = AtomicReference<String?>(null)
     val fileServerUrl = MutableStateFlow<String>("http://127.0.0.1:8920")
-    val lastPacketReceivedMs = AtomicLong(0L)
-    val activeConnections = AtomicInteger(0)
-    val isActivityVisible = AtomicBoolean(false)
+    val lastPacketReceivedMs = AtomicLong(0L); val activeConnections = AtomicInteger(0); val isActivityVisible = AtomicBoolean(false)
 
     fun resetPcDisconnected(context: Context? = null) {
         if (!isPcConnected.value && pcLockState.value == "disconnected" && !isCameraStreaming.value && !isCameraMicActive.value) return
@@ -61,6 +66,11 @@ object AppBridgeState {
         pendingCameraLens.set(null)
         pendingMediaAction.set(null)
         currentMediaState.value = null
+        availableLaptopAudioSinks.value = emptyList()
+        selectedAudioRoute.value = "phone"
+        activeAudioRoute.value = null
+        isListeningToLaptop.value = false
+        pendingAudioRouteCommand.set(null)
         if (context != null) {
             MediaControlManager.getInstance(context).clearMedia()
         }
@@ -90,21 +100,48 @@ object AppBridgeState {
     fun requestPcUnlock() { pendingUnlockRequest.set(true) }
     fun requestPcLock() { pendingLockRequest.set(true) }
     fun requestPcLogout() { pendingLogoutRequest.set(true) }
-    fun requestPcLogin() {
-        pendingLoginRequest.set(true)
-        pendingUnlockRequest.set(true)
-    }
+    fun requestPcLogin() { pendingLoginRequest.set(true); pendingUnlockRequest.set(true) }
     fun requestPowerAction(action: String) { pendingPowerAction.set(action) }
     fun requestOpenUrlOnDesktop(url: String) { pendingOpenUrl.set(url) }
-    fun requestStartCamera(lens: String = "main") {
-        pendingCameraLens.set(lens)
-        selectedCameraLens.value = lens
-        pendingCameraAction.set("start")
-    }
+    fun requestStartCamera(lens: String = "main") { pendingCameraLens.set(lens); selectedCameraLens.value = lens; pendingCameraAction.set("start") }
     fun requestStopCamera() { pendingCameraAction.set("stop") }
-    fun requestSwitchLens(lens: String) {
-        selectedCameraLens.value = lens
-        pendingCameraLens.set(lens)
-        pendingCameraAction.set("switch_lens")
+    fun requestSwitchLens(lens: String) { selectedCameraLens.value = lens; pendingCameraLens.set(lens); pendingCameraAction.set("switch_lens") }
+
+    fun setAudioRoute(sinkName: String?) {
+        val target = sinkName ?: "phone"
+        selectedAudioRoute.value = target
+        isListeningToLaptop.value = (target == "singularity_phone_sink")
+        val cmd = JSONObject().apply {
+            put("action", "set_route")
+            if (target != "phone") put("target_sink", target)
+            put("laptop_to_phone", target == "singularity_phone_sink")
+        }
+        pendingAudioRouteCommand.set(cmd)
+    }
+
+    fun setSinkVolume(sinkName: String, volume: Int) {
+        val cmd = JSONObject().apply {
+            put("action", "set_volume")
+            put("target_sink", sinkName)
+            put("volume", volume.coerceIn(0, 150))
+        }
+        pendingAudioRouteCommand.set(cmd)
+    }
+
+    fun setSinkMute(sinkName: String, mute: Boolean) {
+        val cmd = JSONObject().apply {
+            put("action", "set_mute")
+            put("target_sink", sinkName)
+            put("mute", mute)
+        }
+        pendingAudioRouteCommand.set(cmd)
+    }
+
+    fun setLaptopToPhoneAudio(enabled: Boolean) {
+        if (enabled) {
+            setAudioRoute("singularity_phone_sink")
+        } else {
+            setAudioRoute("phone")
+        }
     }
 }

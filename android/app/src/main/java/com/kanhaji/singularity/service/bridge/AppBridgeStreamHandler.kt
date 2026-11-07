@@ -94,6 +94,10 @@ object AppBridgeStreamHandler {
         AppBridgePayloadHelper.parsePhoneMediaAction(json)?.let {
             SingularityMediaListenerService.tracker.executeAction(it)
         }
+        AppBridgePayloadHelper.parseAudioSinks(json)?.let { sinks ->
+            AppBridgeState.availableLaptopAudioSinks.value = sinks
+        }
+        AppBridgeState.activeAudioRoute.value = AppBridgePayloadHelper.parseActiveAudioRoute(json)
         val locked = json.optBoolean("locked", false)
         val loggedIn = json.optBoolean("logged_in", json.optBoolean("isLoggedIn", false))
         LockTransitionHelper.handleLockTransition(context, locked, loggedIn)

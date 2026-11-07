@@ -10,7 +10,9 @@ pub async fn handle_lock_actions(
     adapter: &dyn LockerAdapter,
     auth_cache: &SharedAuthCache,
     camera: &CameraSupervisor,
+    audio_worker: &mut crate::audio::AudioWorker,
     serial: &str,
+    cached_sinks: &mut [singularity_protocol::AudioSinkInfo],
 ) {
     if let Some(url) = &actions.open_url {
         tracing::info!(target: "lock_watcher", %url, "Opening URL on desktop requested by device");
@@ -19,23 +21,18 @@ pub async fn handle_lock_actions(
             let _ = tokio::process::Command::new("xdg-open").arg(&url_clone).status().await;
         });
     }
-    if actions.lock {
-        trigger_pc_lock(adapter).await;
-    }
-    if actions.logout {
-        trigger_pc_logout().await;
-    }
-    if let Some(ref power) = actions.power {
-        handle_power_action(power.as_str(), adapter).await;
-    }
-    if actions.unlock {
-        handle_unlock_action(adapter, auth_cache).await;
-    }
+    if actions.lock { trigger_pc_lock(adapter).await; }
+    if actions.logout { trigger_pc_logout().await; }
+    if let Some(ref power) = actions.power { handle_power_action(power.as_str(), adapter).await; }
+    if actions.unlock { handle_unlock_action(adapter, auth_cache).await; }
     if let Some(ref cam_req) = actions.camera {
         handle_camera_action(cam_req.as_str(), actions.camera_lens.as_deref(), camera, serial).await;
     }
     if let Some(ref media_action) = actions.media_action {
         crate::media::mpris::execute_media_action(media_action).await;
+    }
+    if let Some(ref audio_cmd) = actions.audio_command {
+        crate::lock_watcher::audio_action::handle_audio_action(audio_cmd, audio_worker, serial, cached_sinks).await;
     }
 }
 

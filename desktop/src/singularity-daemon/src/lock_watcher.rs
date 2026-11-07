@@ -1,6 +1,7 @@
 pub mod action_handler;
 pub mod adapter;
 pub mod adapters;
+pub mod audio_action;
 pub mod detector;
 pub mod input_activity;
 pub mod media_sync;
@@ -10,6 +11,7 @@ pub mod socket2;
 pub mod stream;
 
 pub use action_handler::handle_lock_actions;
+#[allow(unused_imports)]
 pub use adapter::LockerAdapter;
 pub use detector::resolve_adapter;
 pub use input_activity::InputActivityTracker;
@@ -35,15 +37,21 @@ pub fn start_lock_watcher(
         let _socket2 = socket2::start_socket2_listener(Arc::clone(&notify));
         let mut proximity = ProximityLockManager::new(InputActivityTracker::start());
         let mut media_sync = MediaSynchronizer::start().await;
+        let mut audio_worker = crate::audio::AudioWorker::new();
 
-        let mut last_state = None;
         let mut client: Option<AppBridgeStream> = None;
         let mut last_addr = String::new();
+        let mut cached_sinks = Vec::new();
+        let mut last_sink_refresh = std::time::Instant::now() - Duration::from_secs(10);
+        let mut cached_route = None;
+        let mut last_route_refresh = std::time::Instant::now() - Duration::from_secs(10);
+        let mut last_phone_media = None;
 
         loop {
             let adb_address = active_device.read().await.clone();
             if adb_address == "auto" {
                 client = None;
+                audio_worker.stop().await;
                 proximity.on_disconnected(&*adapter).await;
                 tokio::time::sleep(Duration::from_millis(500)).await;
                 continue;
@@ -51,25 +59,22 @@ pub fn start_lock_watcher(
             if adb_address != last_addr {
                 last_addr = adb_address.clone();
                 client = None;
+                audio_worker.stop().await;
             }
 
-            let current_locked = query_pc_screen_locked(&*adapter).await;
-            let current_logged_in = query_pc_logged_in().await;
-            let current = (current_locked, current_logged_in);
+            let cur_locked = query_pc_screen_locked(&*adapter).await;
+            let cur_logged_in = query_pc_logged_in().await;
+            if client.is_none() { client = AppBridgeStream::connect(&adb_address).await.ok(); }
 
-            if last_state != Some(current) {
-                last_state = Some(current);
-                tracing::info!(
-                    target: "lock_watcher",
-                    adapter = adapter.name(),
-                    is_locked = current_locked,
-                    is_logged_in = current_logged_in,
-                    "PC session state updated"
-                );
+            if last_sink_refresh.elapsed() >= Duration::from_millis(2000) || cached_sinks.is_empty() {
+                cached_sinks = crate::audio::query_laptop_sinks().await;
+                last_sink_refresh = std::time::Instant::now();
             }
 
-            if client.is_none() {
-                client = AppBridgeStream::connect(&adb_address).await.ok();
+            if last_route_refresh.elapsed() >= Duration::from_millis(500) || cached_route.is_none() {
+                let w_sink = if audio_worker.is_active() { audio_worker.current_sink() } else { None };
+                cached_route = audio_action::compute_active_audio_route(w_sink, &cached_sinks, last_phone_media.as_ref()).await;
+                last_route_refresh = std::time::Instant::now();
             }
 
             let cam_status = camera.status().await;
@@ -79,53 +84,36 @@ pub fn start_lock_watcher(
             let mut phone_playing = false;
 
             if let Some(ref mut stream) = client {
-                match stream.exchange(current_locked, current_logged_in, &auth_cache, &cam_status, media.as_ref(), phone_action.as_ref()).await {
+                match stream.exchange(cur_locked, cur_logged_in, &auth_cache, &cam_status, media.as_ref(), phone_action.as_ref(), Some(&cached_sinks), cached_route.as_ref()).await {
                     Ok(actions) => {
                         proximity.on_connected(&*adapter).await;
-                        fast_loop = fast_loop || actions.camera.is_some() || actions.media_action.is_some();
+                        fast_loop = fast_loop || actions.camera.is_some() || actions.media_action.is_some() || actions.audio_command.is_some();
                         phone_playing = actions.phone_media.as_ref().map(|m| m.status.eq_ignore_ascii_case("playing")).unwrap_or(false);
+                        last_phone_media = actions.phone_media.clone();
                         media_sync.sync_states(media.as_ref(), actions.phone_media.as_ref()).await;
-                        handle_lock_actions(&actions, &*adapter, &auth_cache, &camera, &adb_address).await;
+                        handle_lock_actions(&actions, &*adapter, &auth_cache, &camera, &mut audio_worker, &adb_address, &mut cached_sinks).await;
                     }
                     Err(e) => {
                         tracing::debug!(target: "lock_watcher", "AppBridge socket dropped: {}, will reconnect", e);
                         client = None;
+                        audio_worker.stop().await;
+                        crate::audio::worker::cleanup_remote_audio_server(&adb_address).await;
                         crate::transport::AdbTunnel::cleanup_unix(&adb_address, "singularity_app").await;
                         proximity.on_disconnected(&*adapter).await;
                     }
                 }
             } else {
+                audio_worker.stop().await;
                 proximity.on_disconnected(&*adapter).await;
             }
 
-            proximity.check_inactivity_lock(&*adapter, current_locked).await;
-
+            proximity.check_inactivity_lock(&*adapter, cur_locked).await;
             let is_media_playing = media.as_ref().map(|m| m.status.eq_ignore_ascii_case("playing")).unwrap_or(false) || phone_playing;
-            let sleep_dur = if fast_loop {
-                Duration::from_millis(50)
-            } else if is_media_playing {
-                Duration::from_millis(250)
-            } else {
-                Duration::from_millis(1000)
-            };
+            let sleep_dur = if fast_loop { Duration::from_millis(50) } else if is_media_playing { Duration::from_millis(250) } else { Duration::from_millis(1000) };
             tokio::select! {
                 _ = notify.notified() => {},
                 _ = tokio::time::sleep(sleep_dur) => {},
             }
         }
     })
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn parse_lock_json_matches_expected() {
-        let json = serde_json::json!({
-            "action": "lock_state", "locked": true, "logged_in": false, "isLoggedIn": false,
-            "request_lock": true, "request_logout": false, "request_unlock": false,
-            "request_power": "suspend"
-        });
-        assert_eq!(json["locked"], true);
-        assert_eq!(json["request_lock"], true);
-    }
 }

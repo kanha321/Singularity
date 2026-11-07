@@ -101,14 +101,12 @@
 
         <service
             android:name=".service.AppBridgeService"
-            android:enabled="true"
-            android:exported="true"
+            android:enabled="true" android:exported="true"
             android:foregroundServiceType="connectedDevice" />
 
         <service
             android:name=".feature.files.download.FileDownloadService"
-            android:enabled="true"
-            android:exported="false"
+            android:enabled="true" android:exported="false"
             android:foregroundServiceType="dataSync" />
 
         <receiver
@@ -125,6 +123,25 @@
             </intent-filter>
         </service>
 
-    </application>
+        <service
+            android:name=".feature.audio.route.SingularityMediaRoute2ProviderService"
+            android:label="Singularity Audio Route"
+            android:permission="android.permission.BIND_MEDIA_ROUTE_2_PROVIDER_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.media.MediaRoute2ProviderService" />
+            </intent-filter>
+        </service>
 
+        <service
+            android:name=".feature.audio.qs.LaptopVolumeTileService"
+            android:label="Laptop Volume"
+            android:icon="@drawable/ic_volume_up"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+    </application>
 </manifest>

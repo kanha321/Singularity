@@ -4,6 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.PowerSettingsNew
+import androidx.compose.material.icons.outlined.Speaker
 import androidx.compose.material.icons.outlined.Videocam
 
 object HomeFeatureCatalog {
@@ -12,8 +13,19 @@ object HomeFeatureCatalog {
         onOpenPower: () -> Unit,
         onOpenFiles: () -> Unit,
         onOpenCamera: () -> Unit,
+        onOpenAudio: () -> Unit = {},
+        audioSubtitle: String = "Laptop & displays",
         isCameraActive: Boolean = false
     ) = listOf(
+        FeatureCardModel(
+            id = "audio_feature",
+            title = "Audio Output",
+            subtitle = audioSubtitle,
+            icon = Icons.Outlined.Speaker,
+            statusText = "Route",
+            isHighlighted = true,
+            onClick = onOpenAudio
+        ),
         FeatureCardModel(
             id = "auth_feature",
             title = "Authentication",

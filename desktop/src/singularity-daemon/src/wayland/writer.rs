@@ -9,6 +9,7 @@ impl WaylandClipboardWriter {
         if text.is_empty() {
             return Ok(());
         }
+        super::ensure_wayland_env();
 
         let mut opts = Options::new();
         opts.clipboard(ClipboardType::Both);

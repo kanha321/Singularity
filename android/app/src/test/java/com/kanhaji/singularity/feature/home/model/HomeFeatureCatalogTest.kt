@@ -15,7 +15,11 @@ class HomeFeatureCatalogTest {
             isCameraActive = false
         )
 
-        assertThat(cards).hasSize(4)
+        assertThat(cards).hasSize(5)
+        val audioCard = cards.first { it.id == "audio_feature" }
+        assertThat(audioCard.title).isEqualTo("Audio Output")
+        assertThat(audioCard.isHighlighted).isTrue()
+
         val cameraCard = cards.first { it.id == "camera_feature" }
 
         assertThat(cameraCard.isHighlighted).isTrue()

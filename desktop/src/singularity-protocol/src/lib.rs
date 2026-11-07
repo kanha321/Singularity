@@ -1,3 +1,4 @@
+pub mod audio;
 pub mod camera;
 pub mod device;
 pub mod error;
@@ -7,6 +8,7 @@ pub mod media;
 pub mod scrcpy;
 pub mod status;
 
+pub use self::audio::{ActiveAudioRouteInfo, AudioRouteCommand, AudioSinkInfo};
 pub use self::camera::{CameraConfig, CameraLens, CameraResolution, CameraStatus};
 pub use self::device::{DeviceEntry, DeviceInfo};
 pub use self::error::{ProtocolError, Result};

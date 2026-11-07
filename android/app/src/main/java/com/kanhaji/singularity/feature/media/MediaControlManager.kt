@@ -31,27 +31,29 @@ class MediaControlManager private constructor(private val context: Context) {
     private var pauseRequestedAtMs = 0L
     private var lastPausedPlayer = ""
 
+    val remoteVolumeManager by lazy {
+        RemoteVolumeManager({ MediaSessionVolumeDelegate(getOrCreateMediaSession()) }, scope)
+    }
+
     private val audioFocusHelper = MediaAudioFocusHelper(
         context = context,
         onPauseRequested = {
             val player = currentMediaState?.player ?: ""
             if (player.isNotEmpty() && currentMediaState?.isPlaying == true) {
-                lastPausedPlayer = player
-                pauseRequestedAtMs = System.currentTimeMillis()
-                dispatchCommand("pause", player)
+                lastPausedPlayer = player; pauseRequestedAtMs = System.currentTimeMillis(); dispatchCommand("pause", player)
             }
         },
         onPlayRequested = {
             val player = lastPausedPlayer.ifEmpty { currentMediaState?.player ?: "" }
             if (player.isNotEmpty() && currentMediaState?.isPlaying == false) {
-                pauseRequestedAtMs = 0L
-                dispatchCommand("play", player)
+                pauseRequestedAtMs = 0L; dispatchCommand("play", player)
             }
         }
     )
 
     init {
         MediaNotificationHelper.createNotificationChannel(notificationManager)
+        remoteVolumeManager.initialize()
     }
 
     private fun getOrCreateMediaSession(): MediaSessionCompat = mediaSession ?: MediaSessionCompat(context, "SingularityMedia").apply {
@@ -64,17 +66,8 @@ class MediaControlManager private constructor(private val context: Context) {
         }, Handler(Looper.getMainLooper()))
     }.also { mediaSession = it }
 
-    fun play(player: String = currentMediaState?.player ?: "") {
-        pauseRequestedAtMs = 0L
-        audioFocusHelper.requestFocus()
-        dispatchCommand("play", player)
-    }
-
-    fun pause(player: String = currentMediaState?.player ?: "") {
-        pauseRequestedAtMs = System.currentTimeMillis()
-        audioFocusHelper.abandonFocus(clearFocusLoss = true)
-        dispatchCommand("pause", player)
-    }
+    fun play(player: String = currentMediaState?.player ?: "") { pauseRequestedAtMs = 0L; audioFocusHelper.requestFocus(); dispatchCommand("play", player) }
+    fun pause(player: String = currentMediaState?.player ?: "") { pauseRequestedAtMs = System.currentTimeMillis(); audioFocusHelper.abandonFocus(clearFocusLoss = true); dispatchCommand("pause", player) }
 
     fun requestFocus() = play()
 
@@ -94,12 +87,10 @@ class MediaControlManager private constructor(private val context: Context) {
         val recentlyPaused = System.currentTimeMillis() - pauseRequestedAtMs < 1000L
         if (!state.isPlaying) {
             if (!audioFocusHelper.wasPausedByFocusLoss) {
-                pauseRequestedAtMs = 0L
-                audioFocusHelper.abandonFocus(clearFocusLoss = true)
+                pauseRequestedAtMs = 0L; audioFocusHelper.abandonFocus(clearFocusLoss = true)
             }
         } else if (!recentlyPaused) {
-            lastPausedPlayer = state.player
-            audioFocusHelper.requestFocus()
+            lastPausedPlayer = state.player; audioFocusHelper.requestFocus()
         }
         val session = getOrCreateMediaSession().apply {
             isActive = true
@@ -134,7 +125,11 @@ class MediaControlManager private constructor(private val context: Context) {
         lastPausedPlayer = ""
         audioFocusHelper.abandonFocus(clearFocusLoss = true)
         currentMediaState = null; cachedArtUrl = null; cachedArtBitmap = null
-        mediaSession?.isActive = false
+        if (remoteVolumeManager.currentProvider == null) {
+            mediaSession?.isActive = false
+        } else {
+            remoteVolumeManager.restoreStandbySession()
+        }
         notificationManager.cancel(MediaNotificationHelper.MEDIA_NOTIFICATION_ID)
     }
 

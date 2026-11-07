@@ -1,4 +1,5 @@
 mod assets;
+mod audio;
 mod auth_cache;
 mod biometric;
 mod camera;
@@ -77,6 +78,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let _lock_handle = lock_watcher::start_lock_watcher(Arc::clone(&active_device), auth_cache, camera.clone());
     let _file_server_handle = file_server::start_file_server(Arc::clone(&active_device), 8920);
+    let _audio_server_handle = audio::start_audio_server(Arc::clone(&active_device), audio::DEFAULT_AUDIO_SERVER_PORT);
     let _beacon_handle = transport::discovery::start_beacon_listener(Arc::clone(&active_device));
 
     let supervisor = supervisor::start_supervisor(

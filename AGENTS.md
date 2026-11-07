@@ -86,7 +86,10 @@ Before executing ANY task, proposing ANY design, writing ANY code, or replying t
   ```bash
   JAVA_HOME=/usr/lib/jvm/java-21-openjdk ANDROID_HOME=/home/kanhaji/Android/Sdk ./gradlew testDebugUnitTest
   ```
-- **Deployment Boundary (No Automated UI Taps/Screenshots):** The moment you install the APK (`adb install -r ...`) and launch the app (`adb shell am start ...`), the deployment step is complete. NEVER run automated UI exploration, synthetic touch events (`adb shell input tap / keyevent`), or screencap captures unless the user explicitly asks for them.
+- **STRICT BAN ON SYNTHETIC INPUT & SCREENCAPS (CRITICAL):**
+  - **NEVER** run `adb shell input` commands (`tap`, `keyevent`, `swipe`, `text`, etc.).
+  - **NEVER** run `adb screencap` or `adb exec-out screencap` to inspect the device screen.
+  - **User-Driven Testing with Log Recording:** Once the APK is installed (`adb install -r ...`) and launched (`am start`), the automated deployment step is complete. Tell the user exactly what action to take on their phone, while simultaneously capturing/monitoring relevant logs (`adb logcat`, `journalctl`, PipeWire streams) to verify behavior.
 
 ---
 

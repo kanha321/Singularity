@@ -1,5 +1,7 @@
 package com.kanhaji.singularity.service.bridge
 
+import com.kanhaji.singularity.feature.audio.model.ActiveAudioRouteInfo
+import com.kanhaji.singularity.feature.audio.model.LaptopAudioSink
 import com.kanhaji.singularity.feature.auth.data.AuthSettingsManager
 import com.kanhaji.singularity.feature.media.model.MediaAction
 import com.kanhaji.singularity.feature.media.model.MediaState
@@ -14,6 +16,20 @@ object AppBridgePayloadHelper {
         val player = actionObj.optString("player", "")
         val pos = if (actionObj.has("position_ms")) actionObj.optLong("position_ms") else null
         return MediaAction(player, cmd, pos)
+    }
+
+    fun parseAudioSinks(json: JSONObject): List<LaptopAudioSink>? {
+        val arr = json.optJSONArray("audio_sinks") ?: return null
+        val list = mutableListOf<LaptopAudioSink>()
+        for (i in 0 until arr.length()) {
+            arr.optJSONObject(i)?.let { list.add(LaptopAudioSink.fromJson(it)) }
+        }
+        return list
+    }
+
+    fun parseActiveAudioRoute(json: JSONObject): ActiveAudioRouteInfo? {
+        val obj = json.optJSONObject("active_audio_route") ?: return null
+        return ActiveAudioRouteInfo.fromJson(obj)
     }
 
     fun buildLockResponse(
@@ -43,6 +59,7 @@ object AppBridgePayloadHelper {
         if (phoneMedia != null) {
             resp.put("phone_media", phoneMedia.toJson())
         }
+        AppBridgeState.pendingAudioRouteCommand.getAndSet(null)?.let { resp.put("audio_route", it) }
         return resp
     }
 }
