@@ -1,8 +1,11 @@
+pub mod reader;
 pub mod watcher;
 pub mod writer;
 
 use std::path::PathBuf;
 
+#[allow(unused_imports)]
+pub use reader::extract_text_from_offer;
 #[allow(unused_imports)]
 pub use watcher::{select_preferred_mime_type, start_wayland_watcher, WaylandWatcherHandle};
 #[allow(unused_imports)]

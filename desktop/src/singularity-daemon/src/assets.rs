@@ -7,6 +7,15 @@ pub const SCRCPY_SERVER_VERSION: &str = "5.0.1";
 /// Canonical destination path on the Android device
 pub const SCRCPY_SERVER_REMOTE_PATH: &str = "/data/local/tmp/scrcpy-server.jar";
 
+/// Embedded companion bytecode (DEX) running on Android.
+pub const COMPANION_BYTES: &[u8] = include_bytes!("../../../../assets/singularity-companion.dex");
+
+/// Canonical destination path for companion on the Android device
+pub const COMPANION_REMOTE_PATH: &str = "/data/local/tmp/singularity-companion.dex";
+
+/// Default TCP loopback port for Singularity Companion
+pub const COMPANION_PORT: u16 = 2830;
+
 /// Returns a reference to the embedded server binary bytes
 pub fn server_bytes() -> &'static [u8] {
     SCRCPY_SERVER_BYTES
@@ -37,5 +46,9 @@ mod tests {
     fn constants_are_consistent() {
         assert_eq!(SCRCPY_SERVER_VERSION, "5.0.1");
         assert_eq!(SCRCPY_SERVER_REMOTE_PATH, "/data/local/tmp/scrcpy-server.jar");
+        assert_eq!(COMPANION_REMOTE_PATH, "/data/local/tmp/singularity-companion.dex");
+        assert_eq!(COMPANION_PORT, 2830);
+        assert!(!COMPANION_BYTES.is_empty());
+        assert_eq!(&COMPANION_BYTES[0..4], b"dex\n");
     }
 }

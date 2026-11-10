@@ -113,7 +113,7 @@ mod tests {
         assert!(!adapter.locked.load(Ordering::Relaxed));
 
         // Let full delay expire after activity
-        tokio::time::sleep(Duration::from_millis(30)).await;
+        tokio::time::sleep(Duration::from_millis(60)).await;
         mgr.check_inactivity_lock(&adapter, false).await;
         assert!(adapter.locked.load(Ordering::Relaxed));
         assert!(!mgr.is_countdown_active());

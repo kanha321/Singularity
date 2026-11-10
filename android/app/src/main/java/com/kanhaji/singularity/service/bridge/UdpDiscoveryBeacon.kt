@@ -39,7 +39,7 @@ class UdpDiscoveryBeacon(private val port: Int = 2829, private val tcpPort: Int 
                     } catch (e: Exception) {
                         Log.d(TAG, "UDP beacon send error: ${e.message}")
                     }
-                    delay(3000L)
+                    delay(1000L)
                 }
             } catch (_: CancellationException) {
             } catch (e: Exception) {

@@ -23,6 +23,7 @@ import com.kanhaji.core.shell.ui.rememberCollapsingTopBarConnection
 import com.kanhaji.singularity.feature.audio.ui.AudioOutputBottomSheet
 import com.kanhaji.singularity.feature.home.components.*
 import com.kanhaji.singularity.feature.home.model.HomeFeatureCatalog
+import com.kanhaji.singularity.navigation.AudioControlNavScreen
 import com.kanhaji.singularity.navigation.AuthSettingsNavScreen
 import com.kanhaji.singularity.navigation.CameraControlNavScreen
 import com.kanhaji.singularity.navigation.FileBrowserNavScreen
@@ -121,7 +122,7 @@ fun HomeScreenContent() {
                     onOpenPower = { navigator.navigate(PowerControlsNavScreen) },
                     onOpenFiles = { navigator.navigate(FileBrowserNavScreen()) },
                     onOpenCamera = { navigator.navigate(CameraControlNavScreen) },
-                    onOpenAudio = { showAudioSheet = true },
+                    onOpenAudio = { navigator.navigate(AudioControlNavScreen) },
                     audioSubtitle = when {
                         isListeningToLaptop -> "Listening to PC sound"
                         isRoutingToLaptop -> audioSinks.find { it.name == selectedAudioRoute }?.nick ?: "Laptop audio"

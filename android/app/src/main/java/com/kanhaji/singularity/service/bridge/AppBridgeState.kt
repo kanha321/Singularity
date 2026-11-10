@@ -110,11 +110,13 @@ object AppBridgeState {
     fun setAudioRoute(sinkName: String?) {
         val target = sinkName ?: "phone"
         selectedAudioRoute.value = target
+        com.kanhaji.singularity.feature.audio.route.AudioRoutePreferences.saveRoute(target)
         isListeningToLaptop.value = (target == "singularity_phone_sink")
         val cmd = JSONObject().apply {
             put("action", "set_route")
             if (target != "phone") put("target_sink", target)
             put("laptop_to_phone", target == "singularity_phone_sink")
+            put("low_latency", com.kanhaji.singularity.feature.audio.route.AudioRoutePreferences.isLowLatencyMode.value)
         }
         pendingAudioRouteCommand.set(cmd)
     }
@@ -138,10 +140,6 @@ object AppBridgeState {
     }
 
     fun setLaptopToPhoneAudio(enabled: Boolean) {
-        if (enabled) {
-            setAudioRoute("singularity_phone_sink")
-        } else {
-            setAudioRoute("phone")
-        }
+        setAudioRoute(if (enabled) "singularity_phone_sink" else "phone")
     }
 }

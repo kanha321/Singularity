@@ -16,6 +16,7 @@ import org.koin.core.context.startKoin
 class SingularityApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        registerActivityLifecycleCallbacks(com.kanhaji.singularity.service.bridge.AppLifecycleTracker)
         initKSafe(this)
         com.kanhaji.singularity.feature.auth.data.AuthSettingsManager.initialize(this)
 

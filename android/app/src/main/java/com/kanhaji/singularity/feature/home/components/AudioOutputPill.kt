@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.sp
 import com.kanhaji.core.designsystem.cards.SurfaceCard
 import com.kanhaji.singularity.feature.audio.model.LaptopAudioSink
 import com.kanhaji.singularity.feature.audio.route.AudioRouteMapper
+import com.kanhaji.singularity.feature.audio.ui.AppNameResolver
 import com.kanhaji.singularity.service.bridge.AppBridgeState
 
 @Composable
@@ -35,6 +36,7 @@ fun AudioOutputPill(
 ) {
     val isListening by AppBridgeState.isListeningToLaptop.collectAsState()
     val activeRoute by AppBridgeState.activeAudioRoute.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
     val activeSink = sinks.find { it.name == selectedRoute }
     val isRouting = selectedRoute != null && selectedRoute != "phone" && activeSink != null
     val hasActiveOutput = activeRoute != null && activeRoute!!.isPlaying
@@ -49,7 +51,7 @@ fun AudioOutputPill(
     }
 
     val sublabel = when {
-        hasActiveOutput && activeRoute?.sourceApp != null -> "via ${activeRoute!!.sourceApp}"
+        hasActiveOutput && activeRoute?.sourceApp != null -> "via ${AppNameResolver.resolve(context, activeRoute!!.sourceApp)}"
         hasActiveOutput -> "via ${activeRoute!!.sourceOrigin.replaceFirstChar { it.uppercase() }}"
         isListening -> "48kHz PCM • Low Latency"
         isRouting -> "Phone Audio Capture"

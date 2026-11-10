@@ -7,6 +7,9 @@ pub async fn handle_audio_action(
     cached_sinks: &mut [AudioSinkInfo],
 ) {
     tracing::info!(target: "lock_watcher", ?cmd, "Executing audio command from phone");
+    if let Some(low_latency) = cmd.low_latency {
+        let _ = audio_worker.set_low_latency(low_latency).await;
+    }
     match cmd.action.as_str() {
         "set_volume" => {
             if let (Some(ref sink), Some(vol)) = (&cmd.target_sink, cmd.volume) {

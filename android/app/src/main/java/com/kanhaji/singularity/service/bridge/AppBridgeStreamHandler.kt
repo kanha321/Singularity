@@ -96,6 +96,7 @@ object AppBridgeStreamHandler {
         }
         AppBridgePayloadHelper.parseAudioSinks(json)?.let { sinks ->
             AppBridgeState.availableLaptopAudioSinks.value = sinks
+            com.kanhaji.singularity.feature.audio.route.AudioRoutePreferences.restoreIfAvailable(sinks)
         }
         AppBridgeState.activeAudioRoute.value = AppBridgePayloadHelper.parseActiveAudioRoute(json)
         val locked = json.optBoolean("locked", false)

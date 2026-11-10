@@ -32,14 +32,8 @@ pub fn start_supervisor(
                     dev
                 }
                 None => {
-                    let sleep_secs = if configured_address == "auto" { 2 } else { reconnect_secs };
-                    tracing::warn!(
-                        target: "daemon",
-                        configured = %configured_address,
-                        retry_in_sec = sleep_secs,
-                        "No Android device detected, will retry"
-                    );
-                    tokio::time::sleep(Duration::from_secs(sleep_secs)).await;
+                    let sleep_dur = if configured_address == "auto" { Duration::from_millis(600) } else { Duration::from_secs(reconnect_secs) };
+                    tokio::time::sleep(sleep_dur).await;
                     continue;
                 }
             };
@@ -52,6 +46,11 @@ pub fn start_supervisor(
                         device = %session.device_name,
                         "Phone highway online. Active bi-directional clipboard sync engaged"
                     );
+
+                    let comp_dev = target_device.clone();
+                    tokio::spawn(async move {
+                        crate::companion::setup(&comp_dev).await;
+                    });
 
                     let info = DeviceInfo {
                         serial: target_device.clone(),
@@ -96,6 +95,10 @@ pub fn start_supervisor(
                         tracing::warn!(target: "daemon", error = %e, "Clipboard bridge session terminated");
                     }
 
+                    let comp_dev = target_device.clone();
+                    tokio::spawn(async move {
+                        crate::companion::disconnect_cleanup(&comp_dev, false).await;
+                    });
                     registry.write().await.on_disconnected().await;
                     has_root.store(false, std::sync::atomic::Ordering::SeqCst);
                     if configured_address == "auto" {
@@ -116,7 +119,8 @@ pub fn start_supervisor(
                     );
                 }
             }
-            tokio::time::sleep(Duration::from_secs(reconnect_secs)).await;
+            let sleep_dur = if configured_address == "auto" { Duration::from_millis(600) } else { Duration::from_secs(reconnect_secs) };
+            tokio::time::sleep(sleep_dur).await;
         }
     })
 }

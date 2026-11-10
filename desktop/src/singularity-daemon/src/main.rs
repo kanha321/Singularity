@@ -4,6 +4,7 @@ mod auth_cache;
 mod biometric;
 mod camera;
 mod clipboard;
+pub mod companion;
 mod config;
 mod deployer;
 mod error;

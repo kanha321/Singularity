@@ -64,6 +64,7 @@ class AppBridgeAudioPayloadTest {
         val routeObj = resp.getJSONObject("audio_route")
         assertThat(routeObj.getString("action")).isEqualTo("set_route")
         assertThat(routeObj.getString("target_sink")).isEqualTo("alsa_output.hdmi")
+        assertThat(routeObj.has("low_latency")).isTrue()
 
         val resp2 = AppBridgePayloadHelper.buildLockResponse(locked = false, loggedIn = true)
         assertThat(resp2.has("audio_route")).isFalse()
@@ -104,5 +105,15 @@ class AppBridgeAudioPayloadTest {
         assertThat(AppBridgeState.availableLaptopAudioSinks.value).isEmpty()
         assertThat(AppBridgeState.activeAudioRoute.value).isNull()
         assertThat(AppBridgeState.pendingAudioRouteCommand.get()).isNull()
+    }
+
+    @Test
+    fun setLowLatencyMode_setsPendingAudioRouteCommand() {
+        com.kanhaji.singularity.feature.audio.route.AudioRoutePreferences.setLowLatencyMode(true)
+        val resp = AppBridgePayloadHelper.buildLockResponse(locked = false, loggedIn = true)
+        assertThat(resp.has("audio_route")).isTrue()
+        val routeObj = resp.getJSONObject("audio_route")
+        assertThat(routeObj.getString("action")).isEqualTo("set_low_latency")
+        assertThat(routeObj.getBoolean("low_latency")).isTrue()
     }
 }

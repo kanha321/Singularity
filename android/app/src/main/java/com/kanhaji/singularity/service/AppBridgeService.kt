@@ -33,6 +33,7 @@ class AppBridgeService : Service() {
         fun onActivityStopped(context: Context) { Log.d(TAG, "MainActivity stopped.") }
         fun onPcDisconnected(context: Context? = null) {
             AppBridgeState.resetPcDisconnected(context)
+            com.kanhaji.singularity.feature.audio.recovery.CompanionClient.triggerDisconnect(context)
             BiometricAuthBridge.rejectActiveAuth("PC disconnected")
             BiometricAuthActivity.dismissActivePrompt()
             LockTransitionHelper.reset()
@@ -134,8 +135,11 @@ class AppBridgeService : Service() {
         serviceScope.launch {
             while (isActive) {
                 delay(1000)
-                val elapsed = System.currentTimeMillis() - AppBridgeState.lastPacketReceivedMs.get()
-                if (AppBridgeState.isPcConnected.value && elapsed > 10000L) handlePcDisconnected()
+                val last = AppBridgeState.lastPacketReceivedMs.get()
+                val elapsed = System.currentTimeMillis() - last
+                if (AppBridgeState.isPcConnected.value && last > 0 && elapsed > 8000L) {
+                    handlePcDisconnected()
+                }
             }
         }
     }

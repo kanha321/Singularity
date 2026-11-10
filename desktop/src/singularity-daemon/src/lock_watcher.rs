@@ -46,6 +46,7 @@ pub fn start_lock_watcher(
         let mut cached_route = None;
         let mut last_route_refresh = std::time::Instant::now() - Duration::from_secs(10);
         let mut last_phone_media = None;
+        let mut last_comp_ping = std::time::Instant::now();
 
         loop {
             let adb_address = active_device.read().await.clone();
@@ -92,10 +93,17 @@ pub fn start_lock_watcher(
                         last_phone_media = actions.phone_media.clone();
                         media_sync.sync_states(media.as_ref(), actions.phone_media.as_ref()).await;
                         handle_lock_actions(&actions, &*adapter, &auth_cache, &camera, &mut audio_worker, &adb_address, &mut cached_sinks).await;
+                        if last_comp_ping.elapsed() >= Duration::from_secs(5) {
+                            last_comp_ping = std::time::Instant::now();
+                            let comp_dev = adb_address.clone();
+                            tokio::spawn(async move { crate::companion::ping(&comp_dev).await; });
+                        }
                     }
                     Err(e) => {
                         tracing::debug!(target: "lock_watcher", "AppBridge socket dropped: {}, will reconnect", e);
                         client = None;
+                        let comp_dev = adb_address.clone();
+                        tokio::spawn(async move { crate::companion::kill_audio(&comp_dev).await; });
                         audio_worker.stop().await;
                         crate::audio::worker::cleanup_remote_audio_server(&adb_address).await;
                         crate::transport::AdbTunnel::cleanup_unix(&adb_address, "singularity_app").await;

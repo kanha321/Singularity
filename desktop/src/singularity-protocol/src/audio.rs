@@ -22,6 +22,8 @@ pub struct AudioRouteCommand {
     pub volume: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mute: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub low_latency: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -62,10 +64,12 @@ mod tests {
             laptop_to_phone: false,
             volume: Some(85),
             mute: Some(false),
+            low_latency: Some(true),
         };
         let json = serde_json::to_string(&cmd).unwrap();
         let parsed: AudioRouteCommand = serde_json::from_str(&json).unwrap();
         assert_eq!(cmd, parsed);
+        assert_eq!(parsed.low_latency, Some(true));
     }
 
     #[test]

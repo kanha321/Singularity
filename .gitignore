@@ -40,4 +40,5 @@ build/
 local.properties
 *.apk
 *.aab
+*.class
 .cxx/

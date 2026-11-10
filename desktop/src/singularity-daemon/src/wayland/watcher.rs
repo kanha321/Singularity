@@ -1,4 +1,3 @@
-use std::io::Read;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
@@ -7,23 +6,10 @@ use tokio::sync::broadcast::Sender;
 use wl_clipboard_rs::paste::Seat;
 use wl_clipboard_rs::watch::{ClipboardEvent, ClipboardType, Watcher};
 
-/// Inspects available MIME types and returns the best candidate for plain text extraction.
+/// Backward-compatible alias for single MIME selection.
+#[allow(dead_code)]
 pub fn select_preferred_mime_type(mime_types: &[String]) -> Option<&str> {
-    const CANDIDATES: &[&str] = &[
-        "text/plain;charset=utf-8",
-        "text/plain",
-        "UTF8_STRING",
-        "TEXT",
-        "STRING",
-    ];
-
-    for candidate in CANDIDATES {
-        if let Some(found) = mime_types.iter().find(|m| m.as_str() == *candidate) {
-            return Some(found.as_str());
-        }
-    }
-
-    mime_types.iter().find(|m| m.starts_with("text/")).map(|m| m.as_str())
+    super::reader::candidate_mime_types(mime_types).first().copied()
 }
 
 /// Handle allowing caller to cleanly terminate the background Wayland watcher thread.
@@ -64,21 +50,10 @@ pub fn start_wayland_watcher(tx: Sender<String>) -> crate::error::Result<Wayland
                 while running_thread.load(Ordering::SeqCst) {
                     match watcher.next_event() {
                         Ok(Some(ClipboardEvent::Changed { mime_types, mut offer, .. })) => {
-                            if let Some(mime) = select_preferred_mime_type(&mime_types) {
-                                match offer.receive(mime) {
-                                    Ok(mut reader) => {
-                                        let mut content = String::new();
-                                        if let Err(e) = reader.read_to_string(&mut content) {
-                                            tracing::warn!(target: "wayland_watcher", error = %e, "Failed reading text from offer pipe");
-                                            continue;
-                                        }
-                                        if !content.is_empty() {
-                                            let _ = tx.send(content);
-                                        }
-                                    }
-                                    Err(e) => {
-                                        tracing::debug!(target: "wayland_watcher", error = %e, mime = mime, "Failed to receive offer stream");
-                                    }
+                            if let Some(text) = super::reader::extract_text_from_offer(&mut offer, &mime_types) {
+                                if !text.is_empty() {
+                                    tracing::debug!(target: "wayland_watcher", len = text.len(), "Forwarding clipboard payload");
+                                    let _ = tx.send(text);
                                 }
                             }
                         }

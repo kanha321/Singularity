@@ -2,6 +2,7 @@ package com.kanhaji.singularity.feature.audio.route
 
 import android.media.MediaRoute2Info
 import android.media.MediaRoute2ProviderService
+import android.media.RouteDiscoveryPreference
 import android.media.RoutingSessionInfo
 import android.os.Bundle
 import android.util.Log
@@ -29,10 +30,8 @@ class SingularityMediaRoute2ProviderService : MediaRoute2ProviderService() {
                     val sessionIds = ArrayList(activeSessions.keys)
                     activeSessions.clear()
                     for (sid in sessionIds) {
-                        try {
-                            notifySessionReleased(sid)
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Failed to release session on disconnect: ${e.message}")
+                        try { notifySessionReleased(sid) } catch (e: Exception) {
+                            Log.e(TAG, "Failed release session: ${e.message}")
                         }
                     }
                 }
@@ -52,6 +51,12 @@ class SingularityMediaRoute2ProviderService : MediaRoute2ProviderService() {
         Log.i(TAG, "SingularityMediaRoute2ProviderService destroyed")
     }
 
+    override fun onDiscoveryPreferenceChanged(preference: RouteDiscoveryPreference) {
+        val active = preference.shouldPerformActiveScan()
+        Log.i(TAG, "Discovery preference changed: activeScan=$active")
+        publishRoutes(AppBridgeState.availableLaptopAudioSinks.value)
+    }
+
     private fun publishRoutes(sinks: List<LaptopAudioSink>) {
         val routes = sinks.map { AudioRouteMapper.buildMediaRoute(it) }
         try {
@@ -65,13 +70,20 @@ class SingularityMediaRoute2ProviderService : MediaRoute2ProviderService() {
         val sessionId = UUID.randomUUID().toString()
         activeSessions[sessionId] = routeId
         AppBridgeState.setAudioRoute(routeId)
+        val sink = AppBridgeState.availableLaptopAudioSinks.value.find { it.name == routeId }
+        val name = sink?.let { AudioRouteMapper.formatDisplayName(it) } ?: "Laptop Audio"
+        val vol = sink?.volume ?: 100
         try {
-            val session = RoutingSessionInfo.Builder(sessionId, pkgName)
+            val builder = RoutingSessionInfo.Builder(sessionId, pkgName)
                 .addSelectedRoute(routeId)
-                .setName("Laptop Audio")
+                .setName(name)
                 .setVolumeHandling(MediaRoute2Info.PLAYBACK_VOLUME_VARIABLE)
-                .build()
-            notifySessionCreated(requestId, session)
+                .setVolume(vol.coerceIn(0, 100))
+                .setVolumeMax(100)
+            AppBridgeState.availableLaptopAudioSinks.value.forEach {
+                if (it.name != routeId) builder.addTransferableRoute(it.name)
+            }
+            notifySessionCreated(requestId, builder.build())
         } catch (e: Exception) {
             Log.e(TAG, "Failed to notify session created: ${e.message}")
         }
@@ -92,14 +104,21 @@ class SingularityMediaRoute2ProviderService : MediaRoute2ProviderService() {
     override fun onTransferToRoute(requestId: Long, sessionId: String, routeId: String) {
         activeSessions[sessionId] = routeId
         AppBridgeState.setAudioRoute(routeId)
+        val sink = AppBridgeState.availableLaptopAudioSinks.value.find { it.name == routeId }
+        val name = sink?.let { AudioRouteMapper.formatDisplayName(it) } ?: "Laptop Audio"
+        val vol = sink?.volume ?: 100
         try {
             val pkg = getSessionInfo(sessionId)?.clientPackageName ?: packageName
-            val session = RoutingSessionInfo.Builder(sessionId, pkg)
+            val builder = RoutingSessionInfo.Builder(sessionId, pkg)
                 .addSelectedRoute(routeId)
-                .setName("Laptop Audio")
+                .setName(name)
                 .setVolumeHandling(MediaRoute2Info.PLAYBACK_VOLUME_VARIABLE)
-                .build()
-            notifySessionUpdated(session)
+                .setVolume(vol.coerceIn(0, 100))
+                .setVolumeMax(100)
+            AppBridgeState.availableLaptopAudioSinks.value.forEach {
+                if (it.name != routeId) builder.addTransferableRoute(it.name)
+            }
+            notifySessionUpdated(builder.build())
         } catch (e: Exception) {
             Log.e(TAG, "Failed to notify session updated: ${e.message}")
         }
@@ -115,7 +134,6 @@ class SingularityMediaRoute2ProviderService : MediaRoute2ProviderService() {
     }
 
     override fun onSelectRoute(requestId: Long, sessionId: String, routeId: String) {}
-
     override fun onDeselectRoute(requestId: Long, sessionId: String, routeId: String) {}
 
     companion object {

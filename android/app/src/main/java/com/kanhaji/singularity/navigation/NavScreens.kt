@@ -49,6 +49,14 @@ object CameraControlNavScreen : NavScreen {
 }
 
 @Serializable
+object AudioControlNavScreen : NavScreen {
+    @Composable
+    override fun Content() {
+        com.kanhaji.singularity.feature.audio.ui.AudioControlScreen()
+    }
+}
+
+@Serializable
 data class FileBrowserNavScreen(val path: String = "~") : NavScreen {
     @Composable
     override fun Content() {

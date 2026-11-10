@@ -74,5 +74,17 @@ class AudioRouteMapperTest {
         assertEquals("bluetooth", AudioRouteMapper.resolveIconType(make("bluetooth")))
         assertEquals("laptop", AudioRouteMapper.resolveIconType(make("other")))
     }
+
+    @Test
+    fun resolveRouteType_classifiesCorrectly() {
+        fun make(type: String) = LaptopAudioSink(
+            name = "s", description = "d", nick = "n",
+            deviceType = type, isDefault = false, volume = 50, mute = false
+        )
+        assertEquals(android.media.MediaRoute2Info.TYPE_HDMI, AudioRouteMapper.resolveRouteType(make("hdmi")))
+        assertEquals(android.media.MediaRoute2Info.TYPE_HDMI, AudioRouteMapper.resolveRouteType(make("monitor")))
+        assertEquals(android.media.MediaRoute2Info.TYPE_REMOTE_SPEAKER, AudioRouteMapper.resolveRouteType(make("speaker")))
+        assertEquals(android.media.MediaRoute2Info.TYPE_REMOTE_SPEAKER, AudioRouteMapper.resolveRouteType(make("headphones")))
+    }
 }
 

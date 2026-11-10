@@ -52,6 +52,7 @@ DO_PAM=false
 DO_DMS=false
 DO_ANDROID=false
 DO_VERIFY=false
+BUILD_APK=false
 ASSUME_YES=false
 
 # ------------------------------------------------------------------------------
@@ -103,7 +104,7 @@ check_prerequisites() {
     log_step "Checking system prerequisites..."
 
     local missing=()
-    for cmd in cargo rustc adb systemctl loginctl; do
+    for cmd in cargo rustc adb systemctl loginctl curl; do
         if ! command -v "${cmd}" &>/dev/null; then
             missing+=("${cmd}")
         fi
@@ -279,6 +280,12 @@ setup_dms() {
     log_step "3. Configuring DankMaterialShell (DMS) Lockscreen & Focus Fix..."
 
     local dms_pam="${USER_HOME}/.local/state/DankMaterialShell/pam/dankshell"
+    if [ ! -f "${dms_pam}" ] && ! command -v dms &>/dev/null; then
+        log_info "DMS (DankMaterialShell) not detected on this system; skipping DMS integration."
+        log_info "Singularity uses native Wayland (hyprlock, swaylock) and systemd-logind locker adapters."
+        return 0
+    fi
+
     if [ -f "${dms_pam}" ]; then
         log_info "Adding pam_singularity.so to DMS lockscreen PAM stack..."
         python3 -c '
@@ -391,49 +398,166 @@ except Exception as e:
 # 4. Setup Android Companion App
 # ------------------------------------------------------------------------------
 setup_android() {
-    log_step "4. Building & Deploying Android Companion App..."
+    log_step "4. Deploying Android Companion App..."
 
-    local java_home="/usr/lib/jvm/java-21-openjdk"
-    if [ ! -d "${java_home}" ]; then
-        java_home="${JAVA_HOME:-$(dirname "$(dirname "$(readlink -f "$(which javac 2>/dev/null || which java)")")")}"
+    local apk_path="${WORKSPACE_ROOT}/assets/singularity.apk"
+
+    if [ "${BUILD_APK}" = true ]; then
+        log_info "Compiling Android APK from source (--build-apk requested)..."
+        local java_home="/usr/lib/jvm/java-21-openjdk"
+        if [ ! -d "${java_home}" ]; then
+            java_home="${JAVA_HOME:-$(dirname "$(dirname "$(readlink -f "$(which javac 2>/dev/null || which java)")")")}"
+        fi
+
+        log_info "Building Android APK with Java: ${java_home}..."
+        (
+            cd "${ANDROID_DIR}"
+            JAVA_HOME="${java_home}" ./gradlew assembleDebug --no-daemon --no-configuration-cache
+        )
+        apk_path="${ANDROID_DIR}/app/build/outputs/apk/debug/app-debug.apk"
+        if [ ! -f "${apk_path}" ]; then
+            log_error "APK build output not found at ${apk_path}"
+            return 1
+        fi
+        log_success "APK built successfully from source: ${apk_path}"
+    elif [ ! -f "${apk_path}" ]; then
+        if [ -f "${ANDROID_DIR}/app/build/outputs/apk/debug/app-debug.apk" ]; then
+            apk_path="${ANDROID_DIR}/app/build/outputs/apk/debug/app-debug.apk"
+            log_info "Using pre-existing local APK: ${apk_path}"
+        else
+            log_info "Pre-built APK not found locally. Downloading from GitHub Release v0.1.0..."
+            mkdir -p "${WORKSPACE_ROOT}/assets"
+            if curl -fL --progress-bar -o "${apk_path}" "https://github.com/kanha321/Singularity/releases/download/v0.1.0/singularity.apk"; then
+                log_success "Downloaded companion APK: ${apk_path}"
+            else
+                log_error "Failed to download companion APK from GitHub."
+                log_info "You can build from source using --build-apk (requires JDK 21 and Android SDK)."
+                return 1
+            fi
+        fi
+    else
+        log_info "Using pre-built APK: ${apk_path}"
     fi
 
-    log_info "Building Android APK with Java: ${java_home}..."
-    (
-        cd "${ANDROID_DIR}"
-        JAVA_HOME="${java_home}" ./gradlew assembleDebug --no-daemon --no-configuration-cache
-    )
+    adb start-server >/dev/null 2>&1 || true
 
-    local apk_path="${ANDROID_DIR}/app/build/outputs/apk/debug/app-debug.apk"
-    if [ ! -f "${apk_path}" ]; then
-        log_error "APK build output not found at ${apk_path}"
-        return 1
-    fi
+    echo ""
+    log_info "${BOLD}Please prepare your Android phone for setup:${NC}"
+    echo -e "      1. Connect your phone to this PC via ${BOLD}USB cable${NC} (or ensure it is on the same Wi-Fi)."
+    echo -e "      2. Enable ${BOLD}Developer Options${NC} (Settings > About Phone > Tap 'Build Number' 7 times)."
+    echo -e "      3. Enable ${BOLD}USB Debugging${NC} in Developer Options."
+    echo -e "      4. Check your phone screen and tap ${BOLD}'Allow USB debugging'${NC} (check 'Always allow')."
+    echo ""
 
-    log_info "Checking connected ADB devices..."
-    local adb_devices
-    adb_devices="$(adb devices | awk 'NR>1 && $2=="device" {print $1}')"
+    local target_dev=""
+    local timeout=20
 
-    if [ -z "${adb_devices}" ]; then
-        log_warn "No active ADB devices detected over USB or Wi-Fi."
-        log_info "Make sure your phone has Wireless Debugging enabled on port 5555."
-        log_info "Run: adb connect <PHONE_IP>:5555"
-        log_info "APK built successfully at: ${apk_path}"
-        return 0
-    fi
+    while true; do
+        log_info "Waiting for connected Android device (timeout: ${timeout}s)..."
+        local elapsed=0
+        local last_unauth_warn=0
 
-    for dev in ${adb_devices}; do
-        log_info "Installing APK onto device: ${dev}..."
-        adb -s "${dev}" install -r "${apk_path}"
-        log_info "Granting full-screen & alert window permissions..."
-        adb -s "${dev}" shell cmd appops set com.kanhaji.singularity USE_FULL_SCREEN_INTENT allow 2>/dev/null || true
-        adb -s "${dev}" shell cmd appops set com.kanhaji.singularity SYSTEM_ALERT_WINDOW allow 2>/dev/null || true
-        adb -s "${dev}" shell pm grant com.kanhaji.singularity android.permission.POST_NOTIFICATIONS 2>/dev/null || true
+        while [ "${elapsed}" -lt "${timeout}" ]; do
+            local dev_list
+            dev_list="$(adb devices 2>/dev/null | sed '1d' | grep -v '^$' || true)"
 
-        log_info "Starting AppBridgeService on ${dev}..."
-        adb -s "${dev}" shell am start-foreground-service -n com.kanhaji.singularity/.service.AppBridgeService 2>/dev/null || true
-        log_success "Companion app deployed and running on ${dev}."
+            # Check for authorized device
+            local found_dev
+            found_dev="$(echo "${dev_list}" | awk '$2=="device" {print $1; exit}')"
+
+            if [ -n "${found_dev}" ]; then
+                target_dev="${found_dev}"
+                log_success "Authorized Android device detected: ${target_dev}"
+                break 2
+            fi
+
+            # Check for unauthorized / offline status
+            local unauth_dev
+            unauth_dev="$(echo "${dev_list}" | awk '$2=="unauthorized" {print $1; exit}')"
+            local offline_dev
+            offline_dev="$(echo "${dev_list}" | awk '$2=="offline" {print $1; exit}')"
+
+            if [ -n "${unauth_dev}" ]; then
+                if [ $((elapsed - last_unauth_warn)) -ge 5 ]; then
+                    log_warn "Device '${unauth_dev}' is UNAUTHORIZED."
+                    echo -e "         ${CYAN}👉 Unlock your phone screen now and tap 'Allow' on the USB debugging prompt!${NC}"
+                    last_unauth_warn=${elapsed}
+                fi
+            elif [ -n "${offline_dev}" ]; then
+                log_info "Device '${offline_dev}' is offline. Waiting for handshake..."
+            fi
+
+            sleep 1
+            elapsed=$((elapsed + 1))
+        done
+
+        log_warn "No authorized Android device detected within ${timeout} seconds."
+        if [ "${ASSUME_YES}" = true ]; then
+            log_warn "Non-interactive mode: Skipping Android companion deployment."
+            return 0
+        fi
+
+        echo -e "\n  ${YELLOW}?${NC} What would you like to do?"
+        echo -e "    ${BOLD}[r]${NC} Retry (wait another ${timeout} seconds)"
+        echo -e "    ${BOLD}[s]${NC} Skip / Abort Android app setup for now"
+        echo -ne "  ${YELLOW}Selection [r/S]: ${NC}"
+        read -r choice
+        case "${choice}" in
+            [rR]|[rR][eE][tT][rR][yY])
+                log_info "Retrying device discovery..."
+                ;;
+            *)
+                log_info "Skipping Android deployment. You can install later using: ./scripts/setup.sh --android"
+                return 0
+                ;;
+        esac
     done
+
+    # Switch USB device to persistent Wi-Fi TCP/IP 5555
+    if [[ "${target_dev}" != *":"* ]]; then
+        log_info "Configuring Wireless Debugging port 5555 on ${target_dev}..."
+        adb -s "${target_dev}" tcpip 5555 >/dev/null 2>&1 || true
+        log_info "Restarting TCP server (brief disconnect)..."
+        sleep 2
+
+        log_info "Discovering phone Wi-Fi IP address..."
+        local phone_ip
+        phone_ip="$(adb -s "${target_dev}" shell "ip route" 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src" && $(i+1)!="127.0.0.1" && $(i+1)!~"^192\\.0\\.0") {print $(i+1); exit}}' || true)"
+        if [ -z "${phone_ip}" ]; then
+            phone_ip="$(adb -s "${target_dev}" shell "ip -o -4 addr show up" 2>/dev/null | grep -E "wlan|wifi|ap|swlan" | awk '{print $4}' | cut -d/ -f1 | head -n1 || true)"
+        fi
+
+        if [ -n "${phone_ip}" ]; then
+            log_info "Discovered phone IP: ${phone_ip}. Connecting over Wi-Fi (port 5555)..."
+            adb connect "${phone_ip}:5555" >/dev/null 2>&1 || true
+            sleep 2
+            if adb devices 2>/dev/null | grep -q "${phone_ip}:5555.*device"; then
+                log_success "Connected to phone over Wi-Fi at ${phone_ip}:5555!"
+                target_dev="${phone_ip}:5555"
+            else
+                log_warn "Wi-Fi connect pending; continuing installation over USB connection."
+            fi
+        else
+            log_warn "Could not resolve phone Wi-Fi IP automatically; continuing over USB connection."
+        fi
+    fi
+
+    # Install APK
+    log_info "Installing companion APK onto ${target_dev}..."
+    adb -s "${target_dev}" install -r "${apk_path}"
+    log_success "APK successfully installed."
+
+    # Grant required permissions
+    log_info "Granting full-screen alerts and background permissions..."
+    adb -s "${target_dev}" shell cmd appops set com.kanhaji.singularity USE_FULL_SCREEN_INTENT allow 2>/dev/null || true
+    adb -s "${target_dev}" shell cmd appops set com.kanhaji.singularity SYSTEM_ALERT_WINDOW allow 2>/dev/null || true
+    adb -s "${target_dev}" shell pm grant com.kanhaji.singularity android.permission.POST_NOTIFICATIONS 2>/dev/null || true
+
+    # Start AppBridgeService & launch MainActivity
+    log_info "Launching Singularity AppBridgeService on ${target_dev}..."
+    adb -s "${target_dev}" shell am start-foreground-service -n com.kanhaji.singularity/.service.AppBridgeService 2>/dev/null || true
+    adb -s "${target_dev}" shell am start -n com.kanhaji.singularity/.MainActivity 2>/dev/null || true
+    log_success "Companion app deployed, configured, and running on ${target_dev}."
 }
 
 # ------------------------------------------------------------------------------
@@ -514,15 +638,16 @@ Options:
   --host        Setup host daemon, CLI, systemd, and NetworkManager dispatcher
   --pam         Build and install PAM module, configure sudo & greetd
   --dms         Setup DMS lockscreen PAM and persistent shell with focus fix
-  --android     Build, install, and configure Android companion app via ADB
+  --android     Install and configure Android companion app via ADB (uses pre-built APK)
+  --build-apk   Compile Android companion app from source with Gradle (requires JDK 21 & Android SDK)
   --verify      Run verification and health checks on all components
   -y, --yes     Assume "yes" to all prompts (non-interactive mode)
   -h, --help    Show this help message
 
 Examples:
   ./scripts/setup.sh --all
-  ./scripts/setup.sh --pam
-  ./scripts/setup.sh --android -y
+  ./scripts/setup.sh --android
+  ./scripts/setup.sh --android --build-apk
 EOF
 }
 
@@ -561,6 +686,11 @@ main() {
                 ;;
             --android)
                 DO_ANDROID=true
+                shift
+                ;;
+            --build-apk|--compile-android)
+                DO_ANDROID=true
+                BUILD_APK=true
                 shift
                 ;;
             --verify)
