@@ -15,6 +15,7 @@ wl-clipboard-rs.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+futures.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 dirs.workspace = true

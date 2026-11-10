@@ -29,6 +29,9 @@ pub enum IpcRequest {
     SelectDevice { serial: String },
     PairDevice { serial: String },
     UnpairDevice { serial: String },
+    NotificationReply { id: String, text: String },
+    NotificationAction { id: String, action_id: String },
+    ListNotifications,
     Custom {
         feature: String,
         action: String,
@@ -64,6 +67,7 @@ pub enum IpcResponse {
     Custom(serde_json::Value),
     CameraStatus(crate::camera::CameraStatus),
     Devices(Vec<crate::device::DeviceEntry>),
+    Notifications(Vec<crate::notification::PhoneNotification>),
     Error(String),
 }
 

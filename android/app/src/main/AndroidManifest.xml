@@ -16,6 +16,7 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:ignore="QueryAllPackagesPermission" />
 
     <application
         android:name=".SingularityApp"
@@ -113,9 +114,22 @@
             android:name=".feature.media.MediaNotificationReceiver"
             android:exported="false" />
 
+        <receiver
+            android:name=".feature.notification.DesktopNotificationDismissReceiver"
+            android:exported="true" />
+
+        <receiver
+            android:name=".feature.notification.TestNotificationReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.kanhaji.singularity.TEST_NOTIFICATION" />
+                <action android:name="com.kanhaji.singularity.TEST_ACTION_RESULT" />
+            </intent-filter>
+        </receiver>
+
         <service
             android:name=".feature.media.session.SingularityMediaListenerService"
-            android:label="Singularity Media Sync"
+            android:label="Singularity Notification &amp; Media Sync"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
             android:exported="true">
             <intent-filter>

@@ -5,6 +5,7 @@ pub mod error;
 pub mod event;
 pub mod ipc;
 pub mod media;
+pub mod notification;
 pub mod scrcpy;
 pub mod status;
 
@@ -15,6 +16,10 @@ pub use self::error::{ProtocolError, Result};
 pub use self::event::DeviceEvent;
 pub use self::ipc::{AuthProgressEvent, IpcEvent, IpcRequest, IpcResponse};
 pub use self::media::{MediaAction, MediaState};
+pub use self::notification::{
+    DesktopNotification, NotificationActionInvoke, NotificationButton, NotificationDismiss,
+    PhoneNotification,
+};
 pub use self::scrcpy::{
     decode_device_msg, encode_set_clipboard, ScrcpyDeviceMsg,
     TYPE_ACK_CLIPBOARD, TYPE_CLIPBOARD_EVENT, TYPE_SET_CLIPBOARD,

@@ -106,6 +106,18 @@ pub async fn handle_client(
         IpcRequest::SelectDevice { serial } => device_handler::handle_select_device(&active_device, &serial).await,
         IpcRequest::PairDevice { serial } => device_handler::handle_pair_device(&serial).await,
         IpcRequest::UnpairDevice { serial } => device_handler::handle_unpair_device(&serial).await,
+        IpcRequest::NotificationReply { id, text } => match crate::notification::NotificationHub::get() {
+            Some(hub) => { hub.send_reply(&id, &text).await; IpcResponse::Ok }
+            None => IpcResponse::Error("Notification hub offline".into()),
+        },
+        IpcRequest::NotificationAction { id, action_id } => match crate::notification::NotificationHub::get() {
+            Some(hub) => { hub.invoke_action(&id, &action_id).await; IpcResponse::Ok }
+            None => IpcResponse::Error("Notification hub offline".into()),
+        },
+        IpcRequest::ListNotifications => match crate::notification::NotificationHub::get() {
+            Some(hub) => IpcResponse::Notifications(hub.get_active_notifications().await),
+            None => IpcResponse::Notifications(Vec::new()),
+        },
         IpcRequest::Custom { .. } => IpcResponse::Ok,
     };
 

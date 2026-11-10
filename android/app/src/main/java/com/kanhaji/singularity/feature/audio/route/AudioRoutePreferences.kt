@@ -9,8 +9,37 @@ import org.json.JSONObject
 object AudioRoutePreferences {
     private const val KEY_AUDIO_ROUTE = "preferred_audio_output_route"
     private const val KEY_LOW_LATENCY = "audio_low_latency_mode"
+    private const val KEY_HIDDEN_SINKS = "hidden_audio_sink_names"
 
     val isLowLatencyMode = MutableStateFlow(getSavedLowLatencyMode())
+    val hiddenSinkNames = MutableStateFlow<Set<String>>(getSavedHiddenSinks())
+    val showAllDevices = MutableStateFlow(false)
+
+    fun getSavedHiddenSinks(): Set<String> {
+        val raw = runCatching {
+            KSafeProvider.prefs.getDirect(KEY_HIDDEN_SINKS, "")
+        }.getOrDefault("")
+        return if (raw.isBlank()) emptySet() else raw.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+    }
+
+    fun isSinkHidden(name: String): Boolean = hiddenSinkNames.value.contains(name)
+
+    fun toggleSinkHidden(name: String) {
+        val current = hiddenSinkNames.value.toMutableSet()
+        if (current.contains(name)) {
+            current.remove(name)
+        } else {
+            current.add(name)
+        }
+        hiddenSinkNames.value = current
+        runCatching {
+            KSafeProvider.prefs.putDirect(KEY_HIDDEN_SINKS, current.joinToString(","))
+        }
+    }
+
+    fun toggleShowAllDevices() {
+        showAllDevices.value = !showAllDevices.value
+    }
 
     fun saveRoute(route: String?) {
         val target = route ?: "phone"

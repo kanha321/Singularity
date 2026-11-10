@@ -14,6 +14,8 @@ pub struct LockActions {
     pub media_action: Option<singularity_protocol::MediaAction>,
     pub phone_media: Option<singularity_protocol::MediaState>,
     pub audio_command: Option<singularity_protocol::AudioRouteCommand>,
+    pub phone_notifications: Vec<singularity_protocol::PhoneNotification>,
+    pub phone_dismissals: Vec<singularity_protocol::NotificationDismiss>,
 }
 
 fn get_local_ip_for(target: &str) -> Option<String> {
@@ -57,16 +59,15 @@ impl AppBridgeStream {
         Ok(Self { reader: BufReader::new(r), writer: w, adb_address: adb_address.to_string() })
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn exchange(
-        &mut self,
-        locked: bool,
-        logged_in: bool,
-        auth_cache: &SharedAuthCache,
-        cam_status: &singularity_protocol::CameraStatus,
-        media: Option<&singularity_protocol::MediaState>,
-        phone_action: Option<&singularity_protocol::MediaAction>,
-        audio_sinks: Option<&[singularity_protocol::AudioSinkInfo]>,
+        &mut self, locked: bool, logged_in: bool, auth_cache: &SharedAuthCache,
+        cam_status: &singularity_protocol::CameraStatus, media: Option<&singularity_protocol::MediaState>,
+        phone_action: Option<&singularity_protocol::MediaAction>, audio_sinks: Option<&[singularity_protocol::AudioSinkInfo]>,
         active_audio_route: Option<&singularity_protocol::ActiveAudioRouteInfo>,
+        desktop_notifs: Option<&[singularity_protocol::DesktopNotification]>,
+        desktop_dismissals: Option<&[singularity_protocol::NotificationDismiss]>,
+        action_invokes: Option<&[singularity_protocol::NotificationActionInvoke]>,
     ) -> Result<LockActions> {
         let lens_str = match cam_status.lens {
             singularity_protocol::CameraLens::Ultrawide => "ultrawide",
@@ -83,6 +84,9 @@ impl AppBridgeStream {
         if let Some(r) = active_audio_route { req["active_audio_route"] = serde_json::to_value(r).unwrap_or_default(); }
         if let Some(act) = phone_action { req["phone_media_action"] = serde_json::to_value(act).unwrap_or_default(); }
         if let Some(ip) = get_local_ip_for(&self.adb_address) { req["file_server_host"] = serde_json::json!(ip); }
+        if let Some(dn) = desktop_notifs.filter(|n| !n.is_empty()) { req["desktop_notifications"] = serde_json::json!(dn); }
+        if let Some(dd) = desktop_dismissals.filter(|d| !d.is_empty()) { req["desktop_dismissals"] = serde_json::json!(dd); }
+        if let Some(ai) = action_invokes.filter(|a| !a.is_empty()) { req["notification_action_invokes"] = serde_json::json!(ai); }
         let mut req_str = serde_json::to_string(&req).map_err(|e| DaemonError::Protocol(e.into()))?;
         req_str.push('\n');
         self.writer.write_all(req_str.as_bytes()).await?;
@@ -95,8 +99,8 @@ impl AppBridgeStream {
         }
 
         let val: serde_json::Value = serde_json::from_str(&resp).unwrap_or_default();
-        if let Some(auth_val) = val.get("auth_settings") {
-            if let Ok(settings) = serde_json::from_value(auth_val.clone()) { *auth_cache.write().await = settings; }
+        if let Some(auth_val) = val.get("auth_settings").and_then(|a| serde_json::from_value(a.clone()).ok()) {
+            *auth_cache.write().await = auth_val;
         }
         Ok(parse_lock_actions(&val))
     }
@@ -114,6 +118,8 @@ pub fn parse_lock_actions(v: &serde_json::Value) -> LockActions {
         media_action: v.get("media_action").and_then(|m| serde_json::from_value(m.clone()).ok()),
         phone_media: v.get("phone_media").and_then(|m| serde_json::from_value(m.clone()).ok()),
         audio_command: v.get("audio_route").and_then(|a| serde_json::from_value(a.clone()).ok()),
+        phone_notifications: v.get("phone_notifications").and_then(|n| serde_json::from_value(n.clone()).ok()).unwrap_or_default(),
+        phone_dismissals: v.get("phone_dismissals").and_then(|d| serde_json::from_value(d.clone()).ok()).unwrap_or_default(),
     }
 }
 
@@ -125,18 +131,12 @@ mod tests {
     fn test_parse_lock_actions_with_phone_media_and_audio() {
         let json = serde_json::json!({
             "status": "ok", "request_unlock": true,
-            "phone_media": {
-                "player": "com.google.android.youtube", "title": "YT Video",
-                "artist": "Channel", "album": "Playlist", "status": "Playing",
-                "position_ms": 1000, "duration_ms": 5000,
-                "can_play": true, "can_pause": true, "can_next": true, "can_prev": false, "can_seek": true
-            },
+            "phone_media": { "player": "com.google.android.youtube", "title": "YT Video", "artist": "Channel", "album": "Playlist", "status": "Playing", "position_ms": 1000, "duration_ms": 5000, "can_play": true, "can_pause": true, "can_next": true, "can_prev": false, "can_seek": true },
             "audio_route": { "action": "set_route", "target_sink": "alsa_output.hdmi" }
         });
         let actions = parse_lock_actions(&json);
         assert!(actions.unlock);
-        let phone = actions.phone_media.expect("phone_media present");
-        assert_eq!(phone.player, "com.google.android.youtube");
+        assert_eq!(actions.phone_media.unwrap().player, "com.google.android.youtube");
         assert_eq!(actions.audio_command.unwrap().target_sink.as_deref(), Some("alsa_output.hdmi"));
     }
 }

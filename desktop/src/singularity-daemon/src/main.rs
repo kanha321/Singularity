@@ -11,6 +11,7 @@ mod error;
 mod file_server;
 mod lock_watcher;
 mod media;
+pub mod notification;
 mod server;
 mod singleton;
 mod storage;

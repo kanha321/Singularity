@@ -15,10 +15,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.VolumeMute
 import androidx.compose.material.icons.automirrored.outlined.VolumeUp
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
@@ -35,9 +38,12 @@ fun AudioSinkItemRow(
     sink: LaptopAudioSink,
     isSelected: Boolean,
     isActiveOutput: Boolean = false,
+    isManagementMode: Boolean = false,
+    isHidden: Boolean = false,
     onSelect: () -> Unit,
     onVolumeChange: (Int) -> Unit,
     onMuteToggle: (Boolean) -> Unit,
+    onToggleHidden: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var totalCardWidthPx by remember { mutableFloatStateOf(1f) }
@@ -71,7 +77,9 @@ fun AudioSinkItemRow(
     val animatedFill by animateColorAsState(targetFill, tween(200), label = "fill_anim")
 
     Box(
-        modifier = modifier.fillMaxWidth().height(68.dp).clip(RoundedCornerShape(16.dp))
+        modifier = modifier.fillMaxWidth().height(68.dp)
+            .then(if (isHidden) Modifier.alpha(0.6f) else Modifier)
+            .clip(RoundedCornerShape(16.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
             .border(if (isSelected) 1.5.dp else 1.dp, animatedBorder, RoundedCornerShape(16.dp))
             .onSizeChanged { totalCardWidthPx = it.width.toFloat().coerceAtLeast(1f) }
@@ -107,7 +115,9 @@ fun AudioSinkItemRow(
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(AudioRouteMapper.formatDisplayName(sink), style = MaterialTheme.typography.titleMedium, fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                        if (isActiveOutput) {
+                        if (isHidden) {
+                            Spacer(Modifier.width(6.dp)); AudioHiddenBadge()
+                        } else if (isActiveOutput) {
                             Spacer(Modifier.width(6.dp)); AudioActiveBadge()
                         } else if (sink.isDefault) {
                             Spacer(Modifier.width(6.dp)); AudioDefaultBadge()
@@ -121,15 +131,26 @@ fun AudioSinkItemRow(
                 modifier = Modifier.onSizeChanged { actionZoneWidthPx = it.width.toFloat() },
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = { onMuteToggle(!sink.mute) }, modifier = Modifier.size(44.dp)) {
-                    Icon(if (sink.mute || localVol <= 0f) Icons.AutoMirrored.Outlined.VolumeMute else Icons.AutoMirrored.Outlined.VolumeUp, "Mute", Modifier.size(22.dp), tint = if (sink.mute) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
-                }
-                Box(
-                    modifier = Modifier.size(32.dp).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onSelect),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Box(Modifier.size(22.dp).clip(CircleShape).background(if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent).border(1.5.dp, if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, CircleShape), contentAlignment = Alignment.Center) {
-                        if (isSelected) Icon(Icons.Outlined.Check, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onPrimary)
+                if (isManagementMode) {
+                    IconButton(onClick = { onToggleHidden?.invoke() }, modifier = Modifier.size(44.dp)) {
+                        Icon(
+                            if (isHidden) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                            contentDescription = if (isHidden) "Unhide" else "Hide",
+                            modifier = Modifier.size(22.dp),
+                            tint = if (isHidden) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f) else MaterialTheme.colorScheme.primary
+                        )
+                    }
+                } else {
+                    IconButton(onClick = { onMuteToggle(!sink.mute) }, modifier = Modifier.size(44.dp)) {
+                        Icon(if (sink.mute || localVol <= 0f) Icons.AutoMirrored.Outlined.VolumeMute else Icons.AutoMirrored.Outlined.VolumeUp, "Mute", Modifier.size(22.dp), tint = if (sink.mute) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                    }
+                    Box(
+                        modifier = Modifier.size(32.dp).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onSelect),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(Modifier.size(22.dp).clip(CircleShape).background(if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent).border(1.5.dp, if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, CircleShape), contentAlignment = Alignment.Center) {
+                            if (isSelected) Icon(Icons.Outlined.Check, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onPrimary)
+                        }
                     }
                 }
             }

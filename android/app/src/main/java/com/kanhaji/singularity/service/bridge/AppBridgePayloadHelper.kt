@@ -5,6 +5,8 @@ import com.kanhaji.singularity.feature.audio.model.LaptopAudioSink
 import com.kanhaji.singularity.feature.auth.data.AuthSettingsManager
 import com.kanhaji.singularity.feature.media.model.MediaAction
 import com.kanhaji.singularity.feature.media.model.MediaState
+import com.kanhaji.singularity.feature.notification.PhoneNotificationTracker
+import org.json.JSONArray
 import org.json.JSONObject
 
 object AppBridgePayloadHelper {
@@ -60,6 +62,18 @@ object AppBridgePayloadHelper {
             resp.put("phone_media", phoneMedia.toJson())
         }
         AppBridgeState.pendingAudioRouteCommand.getAndSet(null)?.let { resp.put("audio_route", it) }
+
+        val (pendingNotifs, pendingDismissals) = PhoneNotificationTracker.drainPending()
+        if (pendingNotifs.isNotEmpty()) {
+            val arr = JSONArray()
+            pendingNotifs.forEach { arr.put(it.toJson()) }
+            resp.put("phone_notifications", arr)
+        }
+        if (pendingDismissals.isNotEmpty()) {
+            val arr = JSONArray()
+            pendingDismissals.forEach { arr.put(it.toJson()) }
+            resp.put("phone_dismissals", arr)
+        }
         return resp
     }
 }

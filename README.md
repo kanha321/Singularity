@@ -31,6 +31,14 @@ Whether you are typing `sudo` in a terminal, listening to music, managing files 
 
 ---
 
+### 🔔 Bidirectional Notification Sync & Remote Actions
+- **Desktop Alerts on Phone:** Linux desktop notifications (`org.freedesktop.Notifications`) instantly mirror to your Android device with clean app names, icons, and interactive action buttons.
+- **Phone Notifications on Desktop:** Incoming phone notifications mirror seamlessly to your desktop via native notifications with reply and dismiss actions.
+- **Remote Action Execution:** Tap actions directly from your notification popups (e.g., WhatsApp Reply, YouTube controls, Gmail Archive) or use the desktop inline reply prompt (`zenity`) to send replies straight to your phone.
+- **Audio Device Management:** Full visibility over all audio sinks (HDMI/DisplayPort, DACs, internal speakers) with customizable hide/unhide toggles and auto-healing for dormant HDMI outputs.
+
+---
+
 ### 🔊 Audio Convergence & Latency Control
 - **Stream Phone Audio to PC:** Route audio from apps like YouTube or Spotify directly to your laptop's built-in speakers or connected external monitors (e.g., Odyssey G5).
 - **Instant Output Switching:** Switch audio targets on the fly between your Phone Speaker, Laptop Speakers, and External Displays right from the phone.
@@ -143,7 +151,7 @@ On Fedora (Hyprland, Niri, Sway, or any Wayland session):
 
 ### 3. Android Companion App
 
-The setup scripts automatically fetch the pre-built companion APK from [GitHub Releases](https://github.com/kanha321/Singularity/releases/tag/v0.1.0) and install it directly to your connected phone. **No Java or Android SDK is required to install or use Singularity.**
+The setup scripts automatically fetch the pre-built companion APK from [GitHub Releases](https://github.com/kanha321/Singularity/releases/tag/v0.2.0) and install it directly to your connected phone. **No Java or Android SDK is required to install or use Singularity.**
 
 If you are developing or wish to build the Android app from source:
 

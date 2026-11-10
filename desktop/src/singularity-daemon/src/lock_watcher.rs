@@ -38,6 +38,7 @@ pub fn start_lock_watcher(
         let mut proximity = ProximityLockManager::new(InputActivityTracker::start());
         let mut media_sync = MediaSynchronizer::start().await;
         let mut audio_worker = crate::audio::AudioWorker::new();
+        let notif_hub = crate::notification::NotificationHub::global().await;
 
         let mut client: Option<AppBridgeStream> = None;
         let mut last_addr = String::new();
@@ -84,9 +85,16 @@ pub fn start_lock_watcher(
             let mut fast_loop = phone_action.is_some();
             let mut phone_playing = false;
 
+            let (d_notifs, d_dism, d_actions) = notif_hub.pop_events_for_phone().await;
             if let Some(ref mut stream) = client {
-                match stream.exchange(cur_locked, cur_logged_in, &auth_cache, &cam_status, media.as_ref(), phone_action.as_ref(), Some(&cached_sinks), cached_route.as_ref()).await {
+                match stream.exchange(
+                    cur_locked, cur_logged_in, &auth_cache, &cam_status, media.as_ref(),
+                    phone_action.as_ref(), Some(&cached_sinks), cached_route.as_ref(),
+                    Some(&d_notifs), Some(&d_dism), Some(&d_actions),
+                ).await {
                     Ok(actions) => {
+                        for p_n in &actions.phone_notifications { notif_hub.post_phone_notification(p_n.clone(), cur_locked).await; }
+                        for p_d in &actions.phone_dismissals { notif_hub.dismiss_from_phone(&p_d.id).await; }
                         proximity.on_connected(&*adapter).await;
                         fast_loop = fast_loop || actions.camera.is_some() || actions.media_action.is_some() || actions.audio_command.is_some();
                         phone_playing = actions.phone_media.as_ref().map(|m| m.status.eq_ignore_ascii_case("playing")).unwrap_or(false);

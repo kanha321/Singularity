@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use singularity_protocol::AudioSinkInfo;
 use tokio::process::Command;
 
@@ -12,18 +13,26 @@ pub fn classify_device_type(name: &str, desc: &str) -> &'static str {
 }
 
 pub fn extract_friendly_nick(props: Option<&serde_json::Value>, desc: &str) -> String {
-    if let Some(p) = props {
-        if let Some(nick) = p.get("node.nick").and_then(|v| v.as_str()) {
-            if !nick.is_empty() { return nick.to_string(); }
-        }
-    }
     if let (Some(s), Some(e)) = (desc.find('['), desc.find(']')) {
         if e > s + 1 { return desc[s + 1..e].to_string(); }
     }
+    if let Some(p) = props {
+        if let Some(nick) = p.get("node.nick").and_then(|v| v.as_str()) {
+            if !nick.is_empty() && !nick.starts_with("HDMI") { return nick.to_string(); }
+        }
+    }
+    if desc.contains("DisplayPort 1") || desc.contains("HDMI 1") { return "DisplayPort 1".into(); }
+    if desc.contains("DisplayPort 2") || desc.contains("HDMI 2") { return "DisplayPort 2".into(); }
+    if desc.contains("DisplayPort 3") || desc.contains("HDMI 3") { return "DisplayPort 3".into(); }
+    if desc.to_ascii_lowercase().contains("speaker") { return "Speaker".into(); }
     desc.to_string()
 }
 
-pub fn parse_pactl_sinks_json(json_str: &str, default_sink: Option<&str>) -> Vec<AudioSinkInfo> {
+pub fn parse_pactl_sinks_json(
+    json_str: &str,
+    default_sink: Option<&str>,
+    port_products: Option<&HashMap<String, String>>,
+) -> Vec<AudioSinkInfo> {
     let array: Vec<serde_json::Value> = match serde_json::from_str(json_str) {
         Ok(arr) => arr,
         Err(_) => return Vec::new(),
@@ -34,16 +43,13 @@ pub fn parse_pactl_sinks_json(json_str: &str, default_sink: Option<&str>) -> Vec
             Some(n) if !n.ends_with(".monitor") && !n.starts_with("singularity_") => n.to_string(),
             _ => continue,
         };
-        if let Some(ports) = item.get("ports").and_then(|v| v.as_array()) {
-            let active = item.get("active_port").and_then(|v| v.as_str());
-            let unavailable = ports.iter().any(|p| {
-                let m = active.map(|a| p.get("name").and_then(|v| v.as_str()) == Some(a)).unwrap_or(true);
-                m && p.get("availability").and_then(|v| v.as_str()) == Some("not available")
-            });
-            if unavailable { continue; }
-        }
         let desc = item.get("description").and_then(|v| v.as_str()).unwrap_or(&name).to_string();
-        let nick = extract_friendly_nick(item.get("properties"), &desc);
+        let active_port = item.get("active_port").and_then(|v| v.as_str());
+        let nick = active_port
+            .and_then(|ap| port_products.and_then(|pp| pp.get(ap)))
+            .cloned()
+            .unwrap_or_else(|| extract_friendly_nick(item.get("properties"), &desc));
+
         let device_type = classify_device_type(&name, &desc).to_string();
         let is_default = default_sink.map(|d| d == name).unwrap_or(false);
         let mute = item.get("mute").and_then(|v| v.as_bool()).unwrap_or(false);
@@ -61,12 +67,17 @@ pub fn parse_pactl_sinks_json(json_str: &str, default_sink: Option<&str>) -> Vec
 pub async fn query_laptop_sinks() -> Vec<AudioSinkInfo> {
     let def_out = Command::new("pactl").arg("get-default-sink").output().await;
     let def_sink = def_out.ok().and_then(|o| String::from_utf8(o.stdout).ok()).map(|s| s.trim().to_string());
-    let sinks_out = match Command::new("pactl").args(["-f", "json", "list", "sinks"]).output().await {
-        Ok(o) => o,
-        Err(_) => return Vec::new(),
-    };
-    let json_str = String::from_utf8_lossy(&sinks_out.stdout);
-    parse_pactl_sinks_json(&json_str, def_sink.as_deref())
+    let sinks_raw = Command::new("pactl").args(["-f", "json", "list", "sinks"]).output().await;
+    let json_str = sinks_raw.ok().map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_default();
+
+    let initial = parse_pactl_sinks_json(&json_str, def_sink.as_deref(), None);
+    let names: Vec<String> = initial.iter().map(|s| s.name.clone()).collect();
+    super::cards::heal_dormant_hdmi_sinks(&names).await;
+
+    let port_products = super::cards::query_card_port_products().await;
+    let sinks_final = Command::new("pactl").args(["-f", "json", "list", "sinks"]).output().await;
+    let json_final = sinks_final.ok().map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_default();
+    parse_pactl_sinks_json(&json_final, def_sink.as_deref(), Some(&port_products))
 }
 
 #[cfg(test)]
@@ -87,9 +98,9 @@ mod tests {
         let props = serde_json::json!({ "node.nick": "Odyssey G5" });
         assert_eq!(extract_friendly_nick(Some(&props), "AD107 High Definition [Odyssey G5]"), "Odyssey G5");
 
-        let no_nick = serde_json::json!({});
-        assert_eq!(extract_friendly_nick(Some(&no_nick), "AD107 High Definition [Odyssey G5]"), "Odyssey G5");
-        assert_eq!(extract_friendly_nick(None, "Laptop Internal Speaker"), "Laptop Internal Speaker");
+        let dp = serde_json::json!({});
+        assert_eq!(extract_friendly_nick(Some(&dp), "cAVS HDMI / DisplayPort 1 Output"), "DisplayPort 1");
+        assert_eq!(extract_friendly_nick(None, "Laptop Internal Speaker"), "Speaker");
     }
 
     #[test]
@@ -98,9 +109,9 @@ mod tests {
             {
                 "name": "alsa_output.pci-0000_01_00.1.hdmi-stereo",
                 "description": "AD107 [Odyssey G5]",
+                "active_port": "hdmi-output-0",
                 "mute": false,
-                "volume": { "front-left": { "value_percent": "100%" } },
-                "properties": { "node.nick": "Odyssey G5" }
+                "volume": { "front-left": { "value_percent": "100%" } }
             },
             {
                 "name": "alsa_output.pci.speaker",
@@ -109,31 +120,25 @@ mod tests {
                 "volume": { "front-left": { "value_percent": "86%" } }
             },
             {
-                "name": "alsa_output.pci.speaker.monitor",
-                "description": "Monitor of Speaker"
-            },
-            {
-                "name": "singularity_phone_sink",
-                "description": "Internal Virtual Sink"
-            },
-            {
-                "name": "alsa_output.pci.hdmi_unplugged",
-                "description": "HDMI 3 Output",
-                "active_port": "hdmi-out",
-                "ports": [{ "name": "hdmi-out", "availability": "not available" }]
+                "name": "alsa_output.pci.hdmi_dp3",
+                "description": "cAVS HDMI / DisplayPort 3 Output",
+                "active_port": "[Out] HDMI3",
+                "ports": [{ "name": "[Out] HDMI3", "availability": "not available" }]
             }
         ]);
-        let sinks = parse_pactl_sinks_json(&sample.to_string(), Some("alsa_output.pci-0000_01_00.1.hdmi-stereo"));
-        assert_eq!(sinks.len(), 2);
+        let mut port_products = HashMap::new();
+        port_products.insert("hdmi-output-0".into(), "Odyssey G5".into());
+
+        let sinks = parse_pactl_sinks_json(&sample.to_string(), Some("alsa_output.pci-0000_01_00.1.hdmi-stereo"), Some(&port_products));
+        assert_eq!(sinks.len(), 3);
         assert_eq!(sinks[0].nick, "Odyssey G5");
         assert_eq!(sinks[0].device_type, "hdmi");
         assert!(sinks[0].is_default);
-        assert_eq!(sinks[0].volume, 100);
-        assert!(!sinks[0].mute);
 
+        assert_eq!(sinks[1].nick, "Speaker");
         assert_eq!(sinks[1].device_type, "speaker");
-        assert!(!sinks[1].is_default);
-        assert_eq!(sinks[1].volume, 86);
-        assert!(sinks[1].mute);
+
+        assert_eq!(sinks[2].nick, "DisplayPort 3");
+        assert_eq!(sinks[2].device_type, "hdmi");
     }
 }

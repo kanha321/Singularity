@@ -38,6 +38,7 @@ object AppBridgeStreamHandler {
                 if (!AppBridgeState.isPcConnected.value) {
                     AppBridgeState.isPcConnected.value = true
                     AppBridgeNotificationHelper.updateHighwayNotification(context, true)
+                    SingularityMediaListenerService.getInstance()?.seedActiveNotifications()
                 }
                 val json = try { JSONObject(reqStr) } catch (_: Exception) {
                     writer.println(JSONObject().put("status", "error").put("message", "invalid json").toString())
@@ -50,6 +51,7 @@ object AppBridgeStreamHandler {
             Log.d(TAG, "Stream ended: ${e.message}")
         } finally {
             AppBridgeState.activeConnections.decrementAndGet()
+            AppBridgeState.isPcConnected.value = false
             onClose()
         }
     }
@@ -99,6 +101,49 @@ object AppBridgeStreamHandler {
             com.kanhaji.singularity.feature.audio.route.AudioRoutePreferences.restoreIfAvailable(sinks)
         }
         AppBridgeState.activeAudioRoute.value = AppBridgePayloadHelper.parseActiveAudioRoute(json)
+
+        val desktopNotifs = json.optJSONArray("desktop_notifications")
+        if (desktopNotifs != null) {
+            for (i in 0 until desktopNotifs.length()) {
+                desktopNotifs.optJSONObject(i)?.let {
+                    val notif = com.kanhaji.singularity.feature.notification.model.DesktopNotification.fromJson(it)
+                    com.kanhaji.singularity.feature.notification.DesktopNotificationDisplayer.show(context, notif)
+                }
+            }
+        }
+
+        val actionInvokes = json.optJSONArray("notification_action_invokes")
+        if (actionInvokes != null) {
+            for (i in 0 until actionInvokes.length()) {
+                actionInvokes.optJSONObject(i)?.let {
+                    val invoke = com.kanhaji.singularity.feature.notification.model.NotificationActionInvoke.fromJson(it)
+                    com.kanhaji.singularity.feature.notification.NotificationActionCache.invoke(
+                        context,
+                        invoke.id,
+                        invoke.actionId,
+                        invoke.replyText
+                    )
+                }
+            }
+        }
+
+        val desktopDismissals = json.optJSONArray("desktop_dismissals")
+        if (desktopDismissals != null) {
+            for (i in 0 until desktopDismissals.length()) {
+                desktopDismissals.optJSONObject(i)?.let {
+                    val id = it.optString("id")
+                    if (id.isNotEmpty()) {
+                        val numId = id.toIntOrNull()
+                        if (numId != null) {
+                            com.kanhaji.singularity.feature.notification.DesktopNotificationDisplayer.cancel(context, numId)
+                        } else {
+                            com.kanhaji.singularity.feature.notification.PhoneNotificationTracker.cancelPhoneNotification(id)
+                        }
+                    }
+                }
+            }
+        }
+
         val locked = json.optBoolean("locked", false)
         val loggedIn = json.optBoolean("logged_in", json.optBoolean("isLoggedIn", false))
         LockTransitionHelper.handleLockTransition(context, locked, loggedIn)

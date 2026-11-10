@@ -86,5 +86,14 @@ class AudioRouteMapperTest {
         assertEquals(android.media.MediaRoute2Info.TYPE_REMOTE_SPEAKER, AudioRouteMapper.resolveRouteType(make("speaker")))
         assertEquals(android.media.MediaRoute2Info.TYPE_REMOTE_SPEAKER, AudioRouteMapper.resolveRouteType(make("headphones")))
     }
+
+    @Test
+    fun testAudioRoutePreferences_toggleShowAllDevices() {
+        val initial = AudioRoutePreferences.showAllDevices.value
+        AudioRoutePreferences.toggleShowAllDevices()
+        assertEquals(!initial, AudioRoutePreferences.showAllDevices.value)
+        AudioRoutePreferences.toggleShowAllDevices()
+        assertEquals(initial, AudioRoutePreferences.showAllDevices.value)
+    }
 }
 

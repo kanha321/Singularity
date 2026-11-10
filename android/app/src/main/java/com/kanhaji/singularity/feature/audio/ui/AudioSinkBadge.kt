@@ -51,3 +51,21 @@ fun AudioDefaultBadge(modifier: Modifier = Modifier) {
     }
 }
 
+@Composable
+fun AudioHiddenBadge(modifier: Modifier = Modifier) {
+    Surface(
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+        modifier = modifier
+    ) {
+        Text(
+            text = "HIDDEN",
+            style = MaterialTheme.typography.labelSmall,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+        )
+    }
+}

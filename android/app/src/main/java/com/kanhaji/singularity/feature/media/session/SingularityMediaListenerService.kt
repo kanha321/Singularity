@@ -18,6 +18,7 @@ class SingularityMediaListenerService : NotificationListenerService() {
         val tracker = PhoneMediaSessionTracker()
         @Volatile private var instance: SingularityMediaListenerService? = null
         val isServiceRunning: Boolean get() = instance != null
+        fun getInstance(): SingularityMediaListenerService? = instance
     }
 
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -48,6 +49,32 @@ class SingularityMediaListenerService : NotificationListenerService() {
             tracker.currentMedia.collect { state ->
                 AppBridgeState.currentPhoneMediaState.value = state
             }
+        }
+        seedActiveNotifications()
+    }
+
+    fun seedActiveNotifications() {
+        try {
+            val active = activeNotifications ?: return
+            for (sbn in active) {
+                com.kanhaji.singularity.feature.notification.PhoneNotificationTracker.onNotificationPosted(this, sbn)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed seeding active notifications: ${e.message}")
+        }
+    }
+
+    override fun onNotificationPosted(sbn: android.service.notification.StatusBarNotification?) {
+        super.onNotificationPosted(sbn)
+        if (sbn != null) {
+            com.kanhaji.singularity.feature.notification.PhoneNotificationTracker.onNotificationPosted(this, sbn)
+        }
+    }
+
+    override fun onNotificationRemoved(sbn: android.service.notification.StatusBarNotification?) {
+        super.onNotificationRemoved(sbn)
+        if (sbn != null) {
+            com.kanhaji.singularity.feature.notification.PhoneNotificationTracker.onNotificationRemoved(sbn)
         }
     }
 

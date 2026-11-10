@@ -130,7 +130,7 @@ install_dependencies() {
         cargo rust gcc gcc-c++ clang make pam-devel pkgconf-pkg-config \
         android-tools systemd polkit ripgrep fd-find 7zip fuse3 curl \
         pipewire wireplumber pulseaudio-utils ffmpeg scrcpy \
-        wl-clipboard \
+        wl-clipboard zenity \
         akmod-v4l2loopback \
         policycoreutils-python-utils
 
@@ -524,9 +524,9 @@ setup_android() {
             apk_path="${ANDROID_DIR}/app/build/outputs/apk/debug/app-debug.apk"
             log_info "Using pre-existing local APK: ${apk_path}"
         else
-            log_info "Pre-built APK not found locally. Downloading from GitHub Release v0.1.0..."
+            log_info "Pre-built APK not found locally. Downloading from GitHub Release v0.2.0..."
             mkdir -p "${WORKSPACE_ROOT}/assets"
-            if curl -fL --progress-bar -o "${apk_path}" "https://github.com/kanha321/Singularity/releases/download/v0.1.0/singularity.apk"; then
+            if curl -fL --progress-bar -o "${apk_path}" "https://github.com/kanha321/Singularity/releases/download/v0.2.0/singularity.apk"; then
                 log_success "Downloaded companion APK: ${apk_path}"
             else
                 log_error "Failed to download companion APK from GitHub."
@@ -647,10 +647,12 @@ setup_android() {
     log_success "APK successfully installed."
 
     # Grant required permissions
-    log_info "Granting full-screen alerts and background permissions..."
+    log_info "Granting notification listener, full-screen alerts, and background permissions..."
     adb -s "${target_dev}" shell cmd appops set com.kanhaji.singularity USE_FULL_SCREEN_INTENT allow 2>/dev/null || true
     adb -s "${target_dev}" shell cmd appops set com.kanhaji.singularity SYSTEM_ALERT_WINDOW allow 2>/dev/null || true
     adb -s "${target_dev}" shell pm grant com.kanhaji.singularity android.permission.POST_NOTIFICATIONS 2>/dev/null || true
+    adb -s "${target_dev}" shell cmd notification allow_listener com.kanhaji.singularity/com.kanhaji.singularity.feature.media.session.SingularityMediaListenerService 2>/dev/null || true
+    adb -s "${target_dev}" shell dumpsys deviceidle whitelist +com.kanhaji.singularity 2>/dev/null || true
 
     # Start AppBridgeService & launch MainActivity
     log_info "Launching Singularity AppBridgeService on ${target_dev}..."

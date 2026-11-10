@@ -1,5 +1,6 @@
 mod camera_cmd;
 mod device_cmd;
+mod notification_cmd;
 
 use clap::{Parser, Subcommand};
 use singularity_client::{FeatureState, SingularityClient};
@@ -55,6 +56,15 @@ enum Commands {
     Pair { serial: String },
     /// Remove a device from the trusted paired whitelist
     Unpair { serial: String },
+    /// Quick reply to phone notification
+    Reply { id: String, message: String },
+    /// Notification actions & replies
+    Notification {
+        #[command(subcommand)]
+        action: notification_cmd::NotificationAction,
+    },
+    /// List active phone notifications
+    Notifications,
 }
 
 #[derive(Subcommand)]
@@ -124,13 +134,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("🔒 System partitions locked as {res}.");
             }
         }
-        Commands::Camera { action } => {
-            camera_cmd::handle_camera_cmd(&client, action).await?;
-        }
+        Commands::Camera { action } => camera_cmd::handle_camera_cmd(&client, action).await?,
         Commands::Devices => device_cmd::handle_devices_cmd(&client).await?,
         Commands::Use { serial } => device_cmd::handle_use_cmd(&client, &serial).await?,
         Commands::Pair { serial } => device_cmd::handle_pair_cmd(&client, &serial).await?,
         Commands::Unpair { serial } => device_cmd::handle_unpair_cmd(&client, &serial).await?,
+        Commands::Reply { id, message } => notification_cmd::handle_notification_cmd(&client, notification_cmd::NotificationAction::Reply { id, message }).await?,
+        Commands::Notification { action } => notification_cmd::handle_notification_cmd(&client, action).await?,
+        Commands::Notifications => notification_cmd::handle_notification_cmd(&client, notification_cmd::NotificationAction::List).await?,
     }
 
     Ok(())

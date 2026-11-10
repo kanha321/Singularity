@@ -25,7 +25,10 @@ class SingularityMediaRoute2ProviderService : MediaRoute2ProviderService() {
         super.onCreate()
         Log.i(TAG, "SingularityMediaRoute2ProviderService created")
         scope.launch {
-            AppBridgeState.availableLaptopAudioSinks.collect { sinks ->
+            kotlinx.coroutines.flow.combine(
+                AppBridgeState.availableLaptopAudioSinks,
+                AudioRoutePreferences.hiddenSinkNames
+            ) { sinks, _ -> sinks }.collect { sinks ->
                 if (sinks.isEmpty() && activeSessions.isNotEmpty()) {
                     val sessionIds = ArrayList(activeSessions.keys)
                     activeSessions.clear()
@@ -58,7 +61,8 @@ class SingularityMediaRoute2ProviderService : MediaRoute2ProviderService() {
     }
 
     private fun publishRoutes(sinks: List<LaptopAudioSink>) {
-        val routes = sinks.map { AudioRouteMapper.buildMediaRoute(it) }
+        val filtered = sinks.filter { !AudioRoutePreferences.isSinkHidden(it.name) }
+        val routes = filtered.map { AudioRouteMapper.buildMediaRoute(it) }
         try {
             notifyRoutes(routes)
         } catch (e: Exception) {
