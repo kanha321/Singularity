@@ -154,7 +154,7 @@ fun HomeLockFab(
 
     LaunchedEffect(activeLocking) {
         if (activeLocking) {
-            delay(6000L)
+            delay(3500L)
             AppBridgeState.isLockingPc.value = false
         }
     }

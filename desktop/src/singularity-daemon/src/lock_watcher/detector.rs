@@ -9,32 +9,15 @@ pub async fn resolve_adapter(configured: Option<&str>) -> Arc<dyn LockerAdapter>
             "caelestia" => return Arc::new(CaelestiaAdapter),
             "dms" => return Arc::new(DmsAdapter),
             "hyprlock" => return Arc::new(HyprlockAdapter),
-            "logind" => return Arc::new(LogindAdapter),
+            "logind" | "universal" => return Arc::new(LogindAdapter),
             _ => {}
         }
     }
 
-    // Auto-detection sequence: prioritize dedicated shell adapters when active,
-    // falling back cleanly to the universal systemd-logind adapter.
-    let dms = DmsAdapter;
-    if dms.is_available().await {
-        tracing::info!(target: "lock_detector", "Selected DMS locker adapter");
-        return Arc::new(dms);
-    }
-
-    let hyprlock = HyprlockAdapter;
-    if hyprlock.is_available().await {
-        tracing::info!(target: "lock_detector", "Selected Hyprland / Hyprlock locker adapter");
-        return Arc::new(hyprlock);
-    }
-
-    let caelestia = CaelestiaAdapter;
-    if caelestia.is_available().await {
-        tracing::info!(target: "lock_detector", "Selected Caelestia shell locker adapter");
-        return Arc::new(caelestia);
-    }
-
-    tracing::info!(target: "lock_detector", "Selected universal systemd-logind locker adapter");
+    // Default to the universal multi-signal adapter: dynamically inspects DMS IPC,
+    // active screen locker binaries (hyprlock, swaylock, etc.), Wayland session-lock
+    // layers, and systemd-logind LockedHint on every query.
+    tracing::info!(target: "lock_detector", "Selected universal multi-signal locker adapter");
     Arc::new(LogindAdapter)
 }
 
@@ -53,7 +36,6 @@ mod tests {
     #[tokio::test]
     async fn test_auto_fallback_resolves_valid_adapter() {
         let adapter = resolve_adapter(None).await;
-        assert!(!adapter.name().is_empty());
+        assert_eq!(adapter.name(), "logind");
     }
 }
-

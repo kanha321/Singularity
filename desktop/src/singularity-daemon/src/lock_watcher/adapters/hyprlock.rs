@@ -12,8 +12,7 @@ impl LockerAdapter for HyprlockAdapter {
     }
 
     async fn is_available(&self) -> bool {
-        std::env::var("HYPRLAND_INSTANCE_SIGNATURE").is_ok()
-            || Command::new("which").arg("hyprctl").output().await.map(|o| o.status.success()).unwrap_or(false)
+        Command::new("which").arg("hyprlock").output().await.map(|o| o.status.success()).unwrap_or(false)
     }
 
     async fn is_locked(&self) -> bool {

@@ -109,7 +109,7 @@ pub fn start_lock_watcher(
                         for p_n in &actions.phone_notifications { notif_hub.post_phone_notification(p_n.clone(), cur_locked).await; }
                         for p_d in &actions.phone_dismissals { notif_hub.dismiss_from_phone(&p_d.id).await; }
                         proximity.on_connected(&*adapter).await;
-                        fast_loop = fast_loop || actions.camera.is_some() || actions.media_action.is_some() || actions.audio_command.is_some();
+                        fast_loop = fast_loop || actions.camera.is_some() || actions.media_action.is_some() || actions.audio_command.is_some() || actions.lock || actions.unlock;
                         phone_playing = actions.phone_media.as_ref().map(|m| m.status.eq_ignore_ascii_case("playing")).unwrap_or(false);
                         last_phone_media = actions.phone_media.clone();
                         media_sync.sync_states(media.as_ref(), actions.phone_media.as_ref()).await;
@@ -139,7 +139,7 @@ pub fn start_lock_watcher(
 
             proximity.check_inactivity_lock(&*adapter, cur_locked).await;
             let is_media_playing = media.as_ref().map(|m| m.status.eq_ignore_ascii_case("playing")).unwrap_or(false) || phone_playing;
-            let sleep_dur = if fast_loop { Duration::from_millis(50) } else if is_media_playing { Duration::from_millis(250) } else { Duration::from_millis(1000) };
+            let sleep_dur = if fast_loop { Duration::from_millis(50) } else if is_media_playing { Duration::from_millis(200) } else { Duration::from_millis(300) };
             tokio::select! {
                 _ = notify.notified() => {},
                 _ = tokio::time::sleep(sleep_dur) => {},

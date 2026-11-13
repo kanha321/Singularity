@@ -7,6 +7,7 @@ import com.kanhaji.singularity.feature.auth.data.AuthSettingsManager
 import com.kanhaji.singularity.feature.media.MediaControlManager
 import com.kanhaji.singularity.feature.media.model.MediaState
 import com.kanhaji.singularity.feature.media.session.SingularityMediaListenerService
+import com.kanhaji.singularity.service.AppBridgeService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -52,6 +53,7 @@ object AppBridgeStreamHandler {
         } finally {
             AppBridgeState.activeConnections.decrementAndGet()
             AppBridgeState.isPcConnected.value = false
+            AppBridgeService.onPcDisconnected(context)
             onClose()
         }
     }
