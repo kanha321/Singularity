@@ -516,9 +516,9 @@ setup_android() {
             apk_path="${ANDROID_DIR}/app/build/outputs/apk/debug/app-debug.apk"
             log_info "Using pre-existing local APK: ${apk_path}"
         else
-            log_info "Pre-built APK not found locally. Downloading from GitHub Release v0.2.0..."
+            log_info "Pre-built APK not found locally. Downloading from GitHub Release v1.0.0..."
             mkdir -p "${WORKSPACE_ROOT}/assets"
-            if curl -fL --progress-bar -o "${apk_path}" "https://github.com/kanha321/Singularity/releases/download/v0.2.0/singularity.apk"; then
+            if curl -fL --progress-bar -o "${apk_path}" "https://github.com/kanha321/Singularity/releases/download/v1.0.0/singularity.apk"; then
                 log_success "Downloaded companion APK: ${apk_path}"
             else
                 log_error "Failed to download companion APK from GitHub."

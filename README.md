@@ -196,7 +196,7 @@ On Fedora (Hyprland, Niri, Sway, or any Wayland session):
 
 ### 3. Android Companion App
 
-The setup scripts automatically fetch the pre-built companion APK from [GitHub Releases](https://github.com/kanha321/Singularity/releases/tag/v0.2.0) and install it directly to your connected phone. **No Java or Android SDK is required to install or use Singularity.**
+The setup scripts automatically fetch the pre-built companion APK from [GitHub Releases](https://github.com/kanha321/Singularity/releases/tag/v1.0.0) and install it directly to your connected phone. **No Java or Android SDK is required to install or use Singularity.**
 
 If you are developing or wish to build the Android app from source:
 
