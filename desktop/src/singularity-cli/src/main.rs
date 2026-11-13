@@ -1,5 +1,6 @@
 mod camera_cmd;
 mod device_cmd;
+mod find_cmd;
 mod notification_cmd;
 
 use clap::{Parser, Subcommand};
@@ -65,6 +66,11 @@ enum Commands {
     },
     /// List active phone notifications
     Notifications,
+    /// Locate phone by ringing at 100% volume overriding DND
+    Find {
+        #[arg(long)]
+        stop: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -85,8 +91,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if statuses.is_empty() {
                 println!("  No active features registered with daemon.");
             } else {
-                println!("\n{:<4} {:<24} {:<12} DETAILS", "STATE", "FEATURE", "ID");
-                println!("{:-<5} {:-<24} {:-<12} {:-<20}", "", "", "", "");
+                println!("\n{:<4} {:<24} {:<12} DETAILS\n{:-<5} {:-<24} {:-<12} {:-<20}", "STATE", "FEATURE", "ID", "", "", "", "");
                 for feat in statuses {
                     let (icon, details) = match feat.state {
                         FeatureState::Active => ("🟢", String::new()),
@@ -97,42 +102,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        Commands::Clip { text } => {
-            client.set_clipboard(&text).await?;
-            println!("Clipboard synchronized ({} bytes)", text.len());
-        }
-        Commands::Mount { path } => {
-            let mount_point = client.mount_storage(path).await?;
-            println!("Mounted phone storage at {}", mount_point);
-        }
-        Commands::Unmount => {
-            client.unmount_storage().await?;
-            println!("Unmounted phone storage");
-        }
-        Commands::Auth { reason, timeout } => {
-            println!("📲 Prompting for biometric authentication on phone...");
-            match client.authenticate_biometric(&reason, timeout).await {
-                Ok(true) => println!("✅ Biometric authentication successful!"),
-                Ok(false) => println!("❌ Biometric authentication failed or cancelled."),
-                Err(e) => eprintln!("⚠️ Biometric error: {}", e),
-            }
-        }
+        Commands::Clip { text } => { client.set_clipboard(&text).await?; println!("Clipboard synchronized ({} bytes)", text.len()); }
+        Commands::Mount { path } => { let mount_point = client.mount_storage(path).await?; println!("Mounted phone storage at {}", mount_point); }
+        Commands::Unmount => { client.unmount_storage().await?; println!("Unmounted phone storage"); }
+        Commands::Auth { reason, timeout } => match client.authenticate_biometric(&reason, timeout).await {
+            Ok(true) => println!("✅ Biometric authentication successful!"),
+            Ok(false) => println!("❌ Biometric authentication failed or cancelled."),
+            Err(e) => eprintln!("⚠️ Biometric error: {}", e),
+        },
         Commands::Call { action } => match action {
             CallAction::Answer => { client.accept_call().await?; println!("Call accepted"); }
             CallAction::End => { client.end_call().await?; println!("Call ended"); }
         },
-        Commands::OpenUrl { url } => {
-            client.open_url(&url).await?;
-            println!("✅ Dispatched URL to Android: {}", url);
-        }
+        Commands::OpenUrl { url } => { client.open_url(&url).await?; println!("✅ Dispatched URL to Android: {}", url); }
         Commands::Remount { rw: _, ro } => {
-            let is_rw = !ro;
-            let res = client.remount_system(is_rw).await?;
-            if is_rw {
-                println!("🔓 System partitions remounted as {res}. Run 'singularity remount --ro' when done.");
-            } else {
-                println!("🔒 System partitions locked as {res}.");
-            }
+            let res = client.remount_system(!ro).await?;
+            if !ro { println!("🔓 System partitions remounted as {res}. Run 'singularity remount --ro' when done."); }
+            else { println!("🔒 System partitions locked as {res}."); }
         }
         Commands::Camera { action } => camera_cmd::handle_camera_cmd(&client, action).await?,
         Commands::Devices => device_cmd::handle_devices_cmd(&client).await?,
@@ -142,6 +128,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Reply { id, message } => notification_cmd::handle_notification_cmd(&client, notification_cmd::NotificationAction::Reply { id, message }).await?,
         Commands::Notification { action } => notification_cmd::handle_notification_cmd(&client, action).await?,
         Commands::Notifications => notification_cmd::handle_notification_cmd(&client, notification_cmd::NotificationAction::List).await?,
+        Commands::Find { stop } => find_cmd::handle_find_cmd(&client, stop).await?,
     }
 
     Ok(())

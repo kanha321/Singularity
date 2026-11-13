@@ -37,6 +37,7 @@ import com.kanhaji.singularity.ui.components.AppSnackbar
 fun HomeScreenContent() {
     val pendingAuth by AppBridgeService.currentAuthRequest.collectAsState()
     val isPcConnected by AppBridgeService.isPcConnected.collectAsState()
+    val isLockingPc by AppBridgeService.isLockingPc.collectAsState()
     val pcLockState by AppBridgeService.pcLockState.collectAsState()
     val isPcLocked = pcLockState == "locked"
     val isLoggedIn by AppBridgeService.pcLoginState.collectAsState()
@@ -82,7 +83,8 @@ fun HomeScreenContent() {
             HomeLockFab(
                 isPcConnected = isPcConnected,
                 isLoggedIn = isLoggedIn,
-                isPcLocked = isPcLocked
+                isPcLocked = isPcLocked,
+                isLocking = isLockingPc
             )
         }
     ) { innerPadding ->

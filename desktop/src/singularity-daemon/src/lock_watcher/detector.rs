@@ -14,13 +14,8 @@ pub async fn resolve_adapter(configured: Option<&str>) -> Arc<dyn LockerAdapter>
         }
     }
 
-    // Auto-detection sequence
-    let caelestia = CaelestiaAdapter;
-    if caelestia.is_available().await {
-        tracing::info!(target: "lock_detector", "Selected Caelestia shell locker adapter");
-        return Arc::new(caelestia);
-    }
-
+    // Auto-detection sequence: prioritize dedicated shell adapters when active,
+    // falling back cleanly to the universal systemd-logind adapter.
     let dms = DmsAdapter;
     if dms.is_available().await {
         tracing::info!(target: "lock_detector", "Selected DMS locker adapter");
@@ -33,7 +28,13 @@ pub async fn resolve_adapter(configured: Option<&str>) -> Arc<dyn LockerAdapter>
         return Arc::new(hyprlock);
     }
 
-    tracing::info!(target: "lock_detector", "Selected generic systemd-logind locker adapter");
+    let caelestia = CaelestiaAdapter;
+    if caelestia.is_available().await {
+        tracing::info!(target: "lock_detector", "Selected Caelestia shell locker adapter");
+        return Arc::new(caelestia);
+    }
+
+    tracing::info!(target: "lock_detector", "Selected universal systemd-logind locker adapter");
     Arc::new(LogindAdapter)
 }
 

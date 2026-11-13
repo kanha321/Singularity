@@ -118,6 +118,7 @@ pub async fn handle_client(
             Some(hub) => IpcResponse::Notifications(hub.get_active_notifications().await),
             None => IpcResponse::Notifications(Vec::new()),
         },
+        IpcRequest::FindDevice { ring } => super::find_handler::handle_find_device(ring, &active_device).await?,
         IpcRequest::Custom { .. } => IpcResponse::Ok,
     };
 

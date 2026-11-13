@@ -2,6 +2,7 @@ pub mod handler;
 pub mod auth_handler;
 pub mod camera_handler;
 pub mod device_handler;
+pub mod find_handler;
 pub mod remount_handler;
 pub mod storage_handler;
 

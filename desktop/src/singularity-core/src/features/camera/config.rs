@@ -26,6 +26,8 @@ impl FeatureCameraConfig {
             enable_mic: true,
             device_path: "/dev/video10".into(),
             auto_demand: true,
+            turn_screen_off: true,
+            dynamic_camera_id: None,
         };
         Self { enabled, stream }
     }

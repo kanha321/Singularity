@@ -24,12 +24,12 @@ pub async fn query_pc_logged_in() -> bool {
 
 pub async fn trigger_pc_unlock(adapter: &dyn LockerAdapter) {
     tracing::info!(target: "lock_watcher", adapter = adapter.name(), "Triggering PC screen unlock");
-    let _ = adapter.unlock().await;
+    let _ = tokio::time::timeout(std::time::Duration::from_millis(1500), adapter.unlock()).await;
 }
 
 pub async fn trigger_pc_lock(adapter: &dyn LockerAdapter) {
     tracing::info!(target: "lock_watcher", adapter = adapter.name(), "Triggering PC screen lock");
-    let _ = adapter.lock().await;
+    let _ = tokio::time::timeout(std::time::Duration::from_millis(1500), adapter.lock()).await;
 }
 
 pub async fn trigger_pc_logout() {

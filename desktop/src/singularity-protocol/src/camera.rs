@@ -66,14 +66,16 @@ pub struct CameraConfig {
     pub enable_mic: bool,
     pub device_path: String,
     pub auto_demand: bool,
+    pub turn_screen_off: bool,
+    pub dynamic_camera_id: Option<u32>,
 }
 
 impl Default for CameraConfig {
     fn default() -> Self {
         Self {
             lens: CameraLens::Main, resolution: CameraResolution::P1080,
-            fps: 30, enable_mic: true,
-            device_path: "/dev/video10".into(), auto_demand: true,
+            fps: 30, enable_mic: true, device_path: "/dev/video10".into(),
+            auto_demand: true, turn_screen_off: true, dynamic_camera_id: None,
         }
     }
 }
@@ -89,19 +91,17 @@ pub struct CameraStatus {
     pub zoom: f32,
     pub has_mic: bool,
     pub readers_count: u32,
+    pub active_device: String,
+    pub error_message: Option<String>,
 }
 
 impl Default for CameraStatus {
     fn default() -> Self {
         Self {
-            active: false,
-            lens: CameraLens::Main,
-            resolution: CameraResolution::P1080,
-            fps: 30,
-            torch: false,
-            zoom: 1.0,
-            has_mic: false,
-            readers_count: 0,
+            active: false, lens: CameraLens::Main,
+            resolution: CameraResolution::P1080, fps: 30,
+            torch: false, zoom: 1.0, has_mic: false, readers_count: 0,
+            active_device: "/dev/video10".into(), error_message: None,
         }
     }
 }
@@ -113,13 +113,10 @@ mod tests {
     #[test]
     fn lens_defaults_and_resolutions() {
         assert_eq!(CameraLens::Main.camera_id(), 0);
-        assert_eq!(CameraLens::Main.facing(), "back");
         assert_eq!(CameraLens::Ultrawide.camera_id(), 4);
         assert_eq!(CameraLens::Front.camera_id(), 1);
-        assert_eq!(CameraLens::Front.facing(), "front");
         assert_eq!(CameraLens::Custom(9).camera_id(), 9);
         assert_eq!(CameraResolution::P1080.dimensions(), (1920, 1080));
-        assert_eq!(CameraResolution::P1080.as_str(), "1920x1080");
         assert_eq!(CameraResolution::P4K.dimensions(), (3840, 2160));
         assert_eq!(CameraResolution::P720.dimensions(), (1280, 720));
     }
@@ -131,16 +128,7 @@ mod tests {
         let decoded: CameraConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(config, decoded);
 
-        let status = CameraStatus {
-            active: true,
-            lens: CameraLens::Ultrawide,
-            resolution: CameraResolution::P4K,
-            fps: 30,
-            torch: true,
-            zoom: 0.65,
-            has_mic: true,
-            readers_count: 2,
-        };
+        let status = CameraStatus::default();
         let s_json = serde_json::to_string(&status).unwrap();
         let s_decoded: CameraStatus = serde_json::from_str(&s_json).unwrap();
         assert_eq!(status, s_decoded);

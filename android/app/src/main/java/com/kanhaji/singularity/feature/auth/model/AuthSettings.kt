@@ -3,7 +3,6 @@ package com.kanhaji.singularity.feature.auth.model
 import org.json.JSONObject
 
 data class AuthSettings(
-    val loginMode: AuthMode = AuthMode.NOTIFY,
     val unlockMode: AuthMode = AuthMode.PROMPT,
     val sudoMode: AuthMode = AuthMode.PROMPT,
     val snoozeUntilEpochMs: Long = 0L,
@@ -21,14 +20,14 @@ data class AuthSettings(
     fun getModeForAction(action: String): AuthMode {
         val act = action.lowercase()
         return when {
-            act.contains("login") || act.contains("greetd") -> loginMode
+            act.contains("login") || act.contains("greetd") -> AuthMode.DENY
             act.contains("unlock") || act.contains("lock") || act.contains("screen") || act.contains("dms") -> unlockMode
             else -> sudoMode
         }
     }
 
     fun toJson(): JSONObject = JSONObject().apply {
-        put("login_mode", loginMode.name.lowercase())
+        put("login_mode", "deny")
         put("unlock_mode", unlockMode.name.lowercase())
         put("sudo_mode", sudoMode.name.lowercase())
         put("snooze_until", snoozeUntilEpochMs)
@@ -40,7 +39,6 @@ data class AuthSettings(
 
     companion object {
         fun fromJson(json: JSONObject): AuthSettings = AuthSettings(
-            loginMode = AuthMode.fromString(json.optString("login_mode", "notify")),
             unlockMode = AuthMode.fromString(json.optString("unlock_mode", "prompt")),
             sudoMode = AuthMode.fromString(json.optString("sudo_mode", "prompt")),
             snoozeUntilEpochMs = json.optLong("snooze_until", 0L),

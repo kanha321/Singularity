@@ -53,6 +53,9 @@ pub async fn handle_biometric(
     };
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<AuthProgressEvent>();
+    if let Some(name) = crate::transport::pairing::get_paired_device_name(&dev) {
+        let _ = tx.send(AuthProgressEvent::Ready { device_name: Some(name) });
+    }
     let auth_fut = crate::biometric::authenticate(&dev, &reason, eff_timeout, move |event| {
         let _ = tx.send(event);
     });

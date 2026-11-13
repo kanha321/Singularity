@@ -6,13 +6,42 @@ pub fn check_device_exists(device_path: &str) -> bool {
     Path::new(device_path).exists()
 }
 
+/// Resolves a V4L2 loopback device: prefers the requested path if it exists,
+/// otherwise scans sysfs for any active virtual loopback device node.
+pub fn resolve_v4l2_device(preferred: &str) -> Option<String> {
+    if check_device_exists(preferred) {
+        return Some(preferred.to_string());
+    }
+
+    if let Ok(entries) = std::fs::read_dir("/sys/class/video4linux") {
+        for entry in entries.flatten() {
+            if let Ok(target) = std::fs::read_link(entry.path()) {
+                if target.to_string_lossy().contains("virtual") {
+                    if let Some(name) = entry.file_name().to_str() {
+                        let dev_path = format!("/dev/{}", name);
+                        if check_device_exists(&dev_path) {
+                            return Some(dev_path);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Configure v4l2loopback flags (keep_format, sustain_framerate) to prevent drops during transitions.
 pub fn ensure_v4l2_sustained(device_path: &str) {
     if check_device_exists(device_path) {
         let _ = Command::new("v4l2-ctl")
-            .args(["-d", device_path, "-c", "keep_format=1", "-c", "sustain_framerate=1"])
+            .args(["-d", device_path, "-c", "keep_format=0", "-c", "sustain_framerate=1"])
             .output();
     }
+}
+
+/// Refresh hooks if needed. (WirePlumber monitors device nodes automatically without restart).
+pub async fn refresh_wireplumber() {
+    // No-op: restarting wireplumber kills active scrcpy pipewire/pulseaudio sinks and V4L2 probe handles.
 }
 
 /// Parse PIDs from `fuser` command stdout.
@@ -62,7 +91,6 @@ mod tests {
 
     #[test]
     fn parse_fuser_pids_with_access_suffixes() {
-        // fuser outputs PIDs often followed by access characters like 'm', 'e', 'f'
         let output = "/dev/video10: 12345 67890m 11111f";
         let pids = parse_fuser_pids(output);
         assert_eq!(pids, vec![12345, 67890, 11111]);
@@ -81,10 +109,7 @@ mod tests {
     }
 
     #[test]
-    fn filter_ignored_pids_logic() {
-        let pids = vec![1001, 1002, 1003];
-        let ignored = [1002];
-        let count = pids.into_iter().filter(|p| !ignored.contains(p)).count();
-        assert_eq!(count, 2);
+    fn resolve_v4l2_device_fallback() {
+        assert_eq!(resolve_v4l2_device("/dev/null"), Some("/dev/null".to_string()));
     }
 }

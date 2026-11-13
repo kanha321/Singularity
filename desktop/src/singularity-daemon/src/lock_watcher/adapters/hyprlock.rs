@@ -40,13 +40,19 @@ impl LockerAdapter for HyprlockAdapter {
     }
 
     async fn lock(&self) -> Result<()> {
-        let _ = Command::new("loginctl").args(["lock-session"]).status().await;
+        if let Some(id) = super::logind::get_active_session_id().await {
+            let _ = Command::new("loginctl").args(["lock-session", &id]).status().await;
+        } else {
+            let _ = Command::new("loginctl").arg("lock-session").status().await;
+        }
         Ok(())
     }
 
     async fn unlock(&self) -> Result<()> {
-        // Send a synthetic Return key to wake the locker and trigger PAM verification
         let _ = Command::new("wtype").args(["-k", "Return"]).status().await;
+        if let Some(id) = super::logind::get_active_session_id().await {
+            let _ = Command::new("loginctl").args(["unlock-session", &id]).status().await;
+        }
         Ok(())
     }
 }

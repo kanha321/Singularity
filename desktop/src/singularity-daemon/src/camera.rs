@@ -1,4 +1,7 @@
 pub mod audio;
+pub mod holders;
+pub mod polkit;
+pub mod probe;
 pub mod process;
 pub mod supervisor;
 pub mod v4l2;

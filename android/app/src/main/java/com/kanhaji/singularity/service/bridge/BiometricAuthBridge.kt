@@ -25,8 +25,15 @@ object BiometricAuthBridge {
         try { activeProgressCallback?.invoke(event, attempt, message) } catch (_: Exception) {}
     }
 
-    fun reportBiometricResult(success: Boolean, error: String?, failedAttempts: Int = 0, isLockout: Boolean = false) {
-        activePendingAuth?.complete(AuthResultData(success, error, failedAttempts, isLockout))
+    fun reportBiometricResult(
+        success: Boolean,
+        error: String?,
+        failedAttempts: Int = 0,
+        isLockout: Boolean = false,
+        signature: String? = null,
+        counter: Long = 0L
+    ) {
+        activePendingAuth?.complete(AuthResultData(success, error, failedAttempts, isLockout, signature, counter))
         AppBridgeState.currentAuthRequest.value = null
     }
 
@@ -63,6 +70,8 @@ object BiometricAuthBridge {
         authAction: String,
         reason: String,
         timeoutSecs: Long,
+        nonce: String? = null,
+        timestampSecs: Long = 0L,
         onProgress: (String, Int, String?) -> Unit
     ): JSONObject {
         val settings = AuthSettingsManager.settings.value
@@ -80,7 +89,7 @@ object BiometricAuthBridge {
         val deferred = CompletableDeferred<AuthResultData>()
         activePendingAuth = deferred
         activeProgressCallback = onProgress
-        AppBridgeState.currentAuthRequest.value = PendingAuth(reason, effectiveTimeout)
+        AppBridgeState.currentAuthRequest.value = PendingAuth(reason, effectiveTimeout, nonce, timestampSecs, authAction)
 
         val intent = Intent(context, BiometricAuthActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -101,8 +110,23 @@ object BiometricAuthBridge {
             val result = withTimeout(effectiveTimeout * 1000L) { deferred.await() }
             val logResult = if (result.success) "Approved" else "Denied"
             AuthSettingsManager.addLog(authAction, mode.label, logResult)
-            return if (result.success) JSONObject().put("status", "success").put("failed_attempts", result.failedAttempts)
-            else JSONObject().put("status", "rejected").put("reason", result.error ?: "Cancelled")
+            return if (result.success) {
+                val resp = JSONObject()
+                    .put("status", "success")
+                    .put("failed_attempts", result.failedAttempts)
+                    .put("device_id", android.os.Build.MODEL)
+                    .put("device_name", com.kanhaji.singularity.util.DeviceIdentityHelper.getFriendlyDeviceName(context))
+                if (result.signature != null) {
+                    resp.put("signature", result.signature)
+                    resp.put("counter", result.counter)
+                }
+                com.kanhaji.singularity.security.KeystoreManager.getOrGeneratePublicKeyBase64()?.let {
+                    resp.put("public_key", it)
+                }
+                resp
+            } else {
+                JSONObject().put("status", "rejected").put("reason", result.error ?: "Cancelled")
+            }
         } catch (_: TimeoutCancellationException) {
             AuthSettingsManager.addLog(authAction, mode.label, "Timed Out")
             return JSONObject().put("status", "timeout").put("reason", "Prompt timed out")

@@ -38,7 +38,8 @@ object AppBridgePayloadHelper {
         locked: Boolean,
         loggedIn: Boolean,
         phoneMedia: MediaState? = AppBridgeState.currentPhoneMediaState.value,
-        authSettingsJson: JSONObject? = try { AuthSettingsManager.settings.value.toJson() } catch (_: Exception) { null }
+        authSettingsJson: JSONObject? = try { AuthSettingsManager.settings.value.toJson() } catch (_: Exception) { null },
+        deviceName: String? = null
     ): JSONObject {
         val resp = JSONObject()
             .put("status", "ok")
@@ -48,6 +49,7 @@ object AppBridgePayloadHelper {
             .put("request_unlock", AppBridgeState.pendingUnlockRequest.getAndSet(false) || AppBridgeState.pendingLoginRequest.getAndSet(false))
             .put("request_lock", AppBridgeState.pendingLockRequest.getAndSet(false))
             .put("request_logout", AppBridgeState.pendingLogoutRequest.getAndSet(false))
+        if (deviceName != null) resp.put("device_name", deviceName)
         if (authSettingsJson != null) resp.put("auth_settings", authSettingsJson)
         AppBridgeState.pendingPowerAction.getAndSet(null)?.let { resp.put("request_power", it) }
         AppBridgeState.pendingOpenUrl.getAndSet(null)?.let { resp.put("request_open_url", it) }
@@ -74,6 +76,7 @@ object AppBridgePayloadHelper {
             pendingDismissals.forEach { arr.put(it.toJson()) }
             resp.put("phone_dismissals", arr)
         }
+        resp.put("phone_ringing", com.kanhaji.singularity.feature.find.DeviceRinger.isRinging.value)
         return resp
     }
 }

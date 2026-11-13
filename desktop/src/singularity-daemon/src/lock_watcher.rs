@@ -86,13 +86,26 @@ pub fn start_lock_watcher(
             let mut phone_playing = false;
 
             let (d_notifs, d_dism, d_actions) = notif_hub.pop_events_for_phone().await;
+            let ring_cmd = if client.is_some() { crate::find::pop_ring_request() } else { None };
             if let Some(ref mut stream) = client {
                 match stream.exchange(
                     cur_locked, cur_logged_in, &auth_cache, &cam_status, media.as_ref(),
                     phone_action.as_ref(), Some(&cached_sinks), cached_route.as_ref(),
                     Some(&d_notifs), Some(&d_dism), Some(&d_actions),
+                    ring_cmd,
                 ).await {
                     Ok(actions) => {
+                        if let Some(ringing) = actions.phone_ringing {
+                            let was_ringing = crate::find::is_ringing();
+                            crate::find::update_ringing_state(ringing);
+                            if was_ringing && !ringing {
+                                tokio::spawn(async {
+                                    let _ = tokio::process::Command::new("notify-send")
+                                        .args(["-u", "normal", "-i", "dialog-information", "-a", "Singularity", "✅ Device Located", "Phone siren was silenced from the phone."])
+                                        .status().await;
+                                });
+                            }
+                        }
                         for p_n in &actions.phone_notifications { notif_hub.post_phone_notification(p_n.clone(), cur_locked).await; }
                         for p_d in &actions.phone_dismissals { notif_hub.dismiss_from_phone(&p_d.id).await; }
                         proximity.on_connected(&*adapter).await;
@@ -108,6 +121,7 @@ pub fn start_lock_watcher(
                         }
                     }
                     Err(e) => {
+                        if let Some(c) = ring_cmd { crate::find::set_ring_request(c); }
                         tracing::debug!(target: "lock_watcher", "AppBridge socket dropped: {}, will reconnect", e);
                         client = None;
                         let comp_dev = adb_address.clone();

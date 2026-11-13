@@ -67,28 +67,25 @@ object AppBridgeNotificationHelper {
         } catch (_: Exception) {}
     }
 
-    fun showPcLockedNotification(context: Context, isLogin: Boolean = false, fullScreen: Boolean = false) {
+    fun showPcLockedNotification(context: Context, fullScreen: Boolean = false) {
         try {
             val manager = context.getSystemService(NotificationManager::class.java) ?: return
-            val title = if (isLogin) "Singularity Greeter" else "Singularity Lockscreen"
-            val action = if (isLogin) "Log In to PC Session" else "Unlock PC Screen"
             val intent = Intent(context, BiometricAuthActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                putExtra(BiometricAuthActivity.EXTRA_TITLE, title)
-                putExtra(BiometricAuthActivity.EXTRA_REASON, action)
-                if (isLogin) putExtra(BiometricAuthActivity.EXTRA_IS_LOGIN, true) else putExtra(BiometricAuthActivity.EXTRA_IS_UNLOCK, true)
+                putExtra(BiometricAuthActivity.EXTRA_TITLE, "Singularity Lockscreen")
+                putExtra(BiometricAuthActivity.EXTRA_REASON, "Unlock PC Screen")
+                putExtra(BiometricAuthActivity.EXTRA_IS_UNLOCK, true)
             }
-            val reqCode = if (isLogin) 104 else 103
-            val pending = PendingIntent.getActivity(context, reqCode, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            val pending = PendingIntent.getActivity(context, 103, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             val notif = NotificationCompat.Builder(context, AUTH_CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher)
-                .setContentTitle(if (isLogin) "💻 PC Login Screen" else "💻 PC Screen Locked")
-                .setContentText(if (isLogin) "Tap to log in with fingerprint" else "Tap to unlock laptop with fingerprint")
+                .setContentTitle("💻 PC Screen Locked")
+                .setContentText("Tap to unlock laptop with fingerprint")
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setAutoCancel(true)
                 .setContentIntent(pending)
-                .addAction(R.mipmap.ic_launcher, if (isLogin) "🔑 Log In with Fingerprint" else "🔓 Unlock with Fingerprint", pending)
+                .addAction(R.mipmap.ic_launcher, "🔓 Unlock with Fingerprint", pending)
                 .apply { if (fullScreen) setFullScreenIntent(pending, true) }
                 .build()
             manager.notify(PC_LOCKED_NOTIFICATION_ID, notif)

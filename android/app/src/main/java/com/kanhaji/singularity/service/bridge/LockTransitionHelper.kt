@@ -37,24 +37,28 @@ object LockTransitionHelper {
     }
 
     private fun onPcLocked(context: Context, loggedIn: Boolean, settings: AuthSettings) {
+        if (!loggedIn) {
+            Log.d(TAG, "PC is at login screen (not logged in); login fingerprint auth is disabled")
+            return
+        }
         if (settings.isSnoozed) {
             Log.d(TAG, "PC locked but auth is snoozed; skipping prompt/notification")
             return
         }
-        val mode = if (loggedIn) settings.unlockMode else settings.loginMode
+        val mode = settings.unlockMode
         Log.i(TAG, "PC locked (loggedIn=$loggedIn). Triggering mode: $mode")
         when (mode) {
             AuthMode.DENY -> { /* no-op */ }
             AuthMode.NOTIFY -> {
-                onNotifyAction?.invoke(context, !loggedIn) ?: AppBridgeNotificationHelper.showPcLockedNotification(
-                    context, isLogin = !loggedIn, fullScreen = false
+                onNotifyAction?.invoke(context, false) ?: AppBridgeNotificationHelper.showPcLockedNotification(
+                    context, fullScreen = false
                 )
             }
             AuthMode.PROMPT -> {
-                onPromptAction?.invoke(context, !loggedIn) ?: run {
+                onPromptAction?.invoke(context, false) ?: run {
                     BiometricAuthBridge.wakeScreen(context)
-                    AppBridgeNotificationHelper.showPcLockedNotification(context, isLogin = !loggedIn, fullScreen = true)
-                    launchPromptActivity(context, loggedIn)
+                    AppBridgeNotificationHelper.showPcLockedNotification(context, fullScreen = true)
+                    launchPromptActivity(context)
                 }
             }
         }
@@ -68,19 +72,13 @@ object LockTransitionHelper {
         }
     }
 
-    private fun launchPromptActivity(context: Context, loggedIn: Boolean) {
+    private fun launchPromptActivity(context: Context) {
         try {
             val intent = Intent(context, BiometricAuthActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                if (!loggedIn) {
-                    putExtra(BiometricAuthActivity.EXTRA_TITLE, "Singularity Greeter")
-                    putExtra(BiometricAuthActivity.EXTRA_REASON, "Log In to PC Session")
-                    putExtra(BiometricAuthActivity.EXTRA_IS_LOGIN, true)
-                } else {
-                    putExtra(BiometricAuthActivity.EXTRA_TITLE, "Singularity Lockscreen")
-                    putExtra(BiometricAuthActivity.EXTRA_REASON, "Unlock PC Screen")
-                    putExtra(BiometricAuthActivity.EXTRA_IS_UNLOCK, true)
-                }
+                putExtra(BiometricAuthActivity.EXTRA_TITLE, "Singularity Lockscreen")
+                putExtra(BiometricAuthActivity.EXTRA_REASON, "Unlock PC Screen")
+                putExtra(BiometricAuthActivity.EXTRA_IS_UNLOCK, true)
             }
             context.startActivity(intent)
         } catch (e: Exception) {

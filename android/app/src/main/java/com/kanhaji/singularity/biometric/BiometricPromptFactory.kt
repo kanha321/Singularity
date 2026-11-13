@@ -10,11 +10,10 @@ import com.kanhaji.singularity.service.AppBridgeService
 class BiometricPromptFactory(
     private val activity: FragmentActivity,
     private val isUnlock: Boolean,
-    private val isLogin: Boolean,
     private val powerAction: String?,
     private val onComplete: (Boolean) -> Unit
 ) {
-    private val isPamAuth = !isUnlock && !isLogin && (powerAction == null)
+    private val isPamAuth = !isUnlock && (powerAction == null)
     private var failedAttemptsCount = 0
 
     fun createPromptInfo(title: String, reason: String): BiometricPrompt.PromptInfo {
@@ -33,9 +32,31 @@ class BiometricPromptFactory(
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                 super.onAuthenticationSucceeded(result)
                 Log.i(BiometricAuthActivity.TAG, "Native biometric authentication SUCCEEDED (failed attempts: $failedAttemptsCount)")
-                if (isPamAuth) AppBridgeService.reportBiometricResult(true, null, failedAttemptsCount)
+
+                var sigString: String? = null
+                var counterVal = 0L
+                val auth = com.kanhaji.singularity.service.bridge.AppBridgeState.currentAuthRequest.value
+                val crypto = result.cryptoObject
+                if (auth?.nonce != null && crypto != null) {
+                    try {
+                        val nonceBytes = android.util.Base64.decode(auth.nonce, android.util.Base64.NO_WRAP)
+                        counterVal = com.kanhaji.singularity.security.CounterManager.nextCounter(activity)
+                        val user = auth.reason.substringAfter(":", "").trim()
+                        val canonical = com.kanhaji.singularity.security.CanonicalPayload.build(
+                            nonce = nonceBytes,
+                            timestampSecs = auth.timestampSecs,
+                            counter = counterVal,
+                            service = auth.authAction,
+                            user = user
+                        )
+                        sigString = com.kanhaji.singularity.security.KeystoreManager.signData(crypto, canonical)
+                    } catch (e: Exception) {
+                        Log.w(BiometricAuthActivity.TAG, "Failed signing canonical challenge: ${e.message}")
+                    }
+                }
+
+                if (isPamAuth) AppBridgeService.reportBiometricResult(true, null, failedAttemptsCount, false, sigString, counterVal)
                 if (isUnlock) AppBridgeService.requestPcUnlock()
-                if (isLogin) AppBridgeService.requestPcLogin()
                 powerAction?.let { AppBridgeService.requestPowerAction(it) }
                 AppBridgeService.dismissPcLockedNotification(activity)
                 onComplete(true)
@@ -56,8 +77,8 @@ class BiometricPromptFactory(
                         Log.i(BiometricAuthActivity.TAG, "Prompt dismissed by user/system; keeping auth request active for app retry")
                         AppBridgeService.reportBiometricProgress("cancelled", failedAttemptsCount)
                         AppBridgeService.onBiometricPromptDismissed(activity)
-                    } else if ((isUnlock || isLogin) && AppBridgeService.pcLockState.value == "locked") {
-                        AppBridgeService.showPcLockedNotification(activity, isLogin = isLogin)
+                    } else if (isUnlock && AppBridgeService.pcLockState.value == "locked") {
+                        AppBridgeService.showPcLockedNotification(activity)
                     }
                 } else if (isPamAuth) {
                     AppBridgeService.reportBiometricResult(false, errString.toString(), failedAttemptsCount, isLockout)

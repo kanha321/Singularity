@@ -20,17 +20,8 @@ pub struct PamHandle {
 pub const PAM_SERVICE: c_int = 1;
 
 extern "C" {
-    fn pam_get_user(
-        pamh: *const PamHandle,
-        user: *mut *const c_char,
-        prompt: *const c_char,
-    ) -> c_int;
-
-    fn pam_get_item(
-        pamh: *const PamHandle,
-        item_type: c_int,
-        item: *mut *const std::ffi::c_void,
-    ) -> c_int;
+    fn pam_get_user(pamh: *const PamHandle, user: *mut *const c_char, prompt: *const c_char) -> c_int;
+    fn pam_get_item(pamh: *const PamHandle, item_type: c_int, item: *mut *const std::ffi::c_void) -> c_int;
 }
 
 /// Authenticates the user using Singularity proximity biometrics or keyboard fallback.
@@ -59,6 +50,10 @@ pub unsafe extern "C" fn pam_sm_authenticate(
         "sudo".to_string()
     };
 
+    if is_login_service(&service) {
+        return PAM_IGNORE;
+    }
+
     let username = CStr::from_ptr(user_ptr).to_string_lossy().to_string();
     let timeout = parse_timeout(argc, argv, 15).max(10);
 
@@ -79,19 +74,21 @@ async fn authenticate_user(username: &str, service: &str, timeout_secs: u32) -> 
     let client = SingularityClient::new();
     let reason = format!("{}: {}", service, username);
     let watcher = KeyboardWatcher::new();
+    let mut dev = "phone".to_string();
 
-    eprint!("\r📱 Touch fingerprint on POCO F5 (or press Enter for password)... ");
+    eprint!("\r📱 Touch fingerprint on phone (or press Enter for password)... ");
     let _ = std::io::stderr().flush();
 
     tokio::select! {
         auth_res = client.authenticate_biometric_streaming(&reason, timeout_secs, |event| {
             match event {
-                singularity_client::AuthProgressEvent::Ready => {
-                    eprint!("\r\x1b[2K📱 Touch fingerprint on POCO F5 (or press Enter for password)... ");
+                singularity_client::AuthProgressEvent::Ready { device_name } => {
+                    if let Some(d) = device_name { dev = d; }
+                    eprint!("\r\x1b[2K📱 Touch fingerprint on {} (or press Enter for password)... ", dev);
                     let _ = std::io::stderr().flush();
                 }
                 singularity_client::AuthProgressEvent::FingerMismatch { attempt } => {
-                    eprint!("\r\x1b[2K📱 Touch fingerprint on POCO F5... \x1b[33m❌ Try again (Attempt {}/5)\x1b[0m", attempt);
+                    eprint!("\r\x1b[2K📱 Touch fingerprint on {}... \x1b[33m❌ Try again (Attempt {}/5)\x1b[0m", dev, attempt);
                     let _ = std::io::stderr().flush();
                 }
                 singularity_client::AuthProgressEvent::SensorLockout { duration_secs, .. } => {
@@ -103,7 +100,7 @@ async fn authenticate_user(username: &str, service: &str, timeout_secs: u32) -> 
             }
         }) => {
             if let Ok(true) = auth_res {
-                eprintln!("\r\x1b[2K📱 Touch fingerprint on POCO F5... \x1b[32m✔ Approved!\x1b[0m");
+                eprintln!("\r\x1b[2K📱 Touch fingerprint on {}... \x1b[32m✔ Approved!\x1b[0m", dev);
                 PAM_SUCCESS
             } else {
                 eprintln!("\r\x1b[2K📱 Biometric authentication canceled or timed out.");
@@ -118,17 +115,15 @@ async fn authenticate_user(username: &str, service: &str, timeout_secs: u32) -> 
     }
 }
 
+fn is_login_service(service: &str) -> bool {
+    let s = service.to_lowercase();
+    s.contains("greetd") || s.contains("login")
+}
+
 /// Sets PAM credentials (no-op for Singularity biometric module).
-///
-/// # Safety
-///
-/// Must be called with a valid `PamHandle` pointer provided by the Linux PAM library.
 #[no_mangle]
 pub unsafe extern "C" fn pam_sm_setcred(
-    _pamh: *mut PamHandle,
-    _flags: c_int,
-    _argc: c_int,
-    _argv: *const *const c_char,
+    _pamh: *mut PamHandle, _flags: c_int, _argc: c_int, _argv: *const *const c_char,
 ) -> c_int {
     PAM_SUCCESS
 }
@@ -142,5 +137,13 @@ mod tests {
         assert_eq!(PAM_SUCCESS, 0);
         assert_eq!(PAM_AUTH_ERR, 7);
         assert_eq!(PAM_IGNORE, 25);
+    }
+
+    #[test]
+    fn test_login_service_detection() {
+        assert!(is_login_service("greetd"));
+        assert!(is_login_service("system-local-login"));
+        assert!(!is_login_service("sudo"));
+        assert!(!is_login_service("hyprlock"));
     }
 }

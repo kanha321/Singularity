@@ -72,6 +72,12 @@ async fn handle_camera_action(
             tracing::info!(target: "lock_watcher", ?lens, "Starting camera from phone request");
             if let Err(e) = camera.start(serial, Some(cfg)).await {
                 tracing::error!(target: "lock_watcher", error = %e, "Failed to start camera from phone request");
+                let err_msg = format!("{e}");
+                tokio::spawn(async move {
+                    let _ = tokio::process::Command::new("notify-send")
+                        .args(["-u", "critical", "-i", "camera-web", "-a", "Singularity", "📷 Camera Error", &err_msg])
+                        .status().await;
+                });
             }
         }
         "stop" => {

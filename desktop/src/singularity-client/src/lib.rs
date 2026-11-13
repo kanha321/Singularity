@@ -2,6 +2,7 @@ pub mod camera;
 pub mod client;
 pub mod device;
 pub mod error;
+pub mod find;
 pub mod framed;
 pub mod notification;
 

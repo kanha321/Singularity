@@ -26,7 +26,7 @@ mod tests {
     fn device_info_serialization_roundtrip() {
         let info = DeviceInfo {
             serial: "10.235.203.184:5555".into(),
-            model: "POCO F5".into(),
+            model: "Pixel 8".into(),
             android_version: "16".into(),
         };
         let json = serde_json::to_string(&info).expect("Failed to serialize DeviceInfo");
@@ -38,7 +38,7 @@ mod tests {
     fn device_entry_serialization_roundtrip() {
         let entry = DeviceEntry {
             serial: "23049PCD8I".into(),
-            model: Some("POCO F5".into()),
+            model: Some("Pixel 8".into()),
             connection_type: "usb".into(),
             is_active: true,
             is_paired: true,

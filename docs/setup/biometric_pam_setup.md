@@ -48,18 +48,11 @@
 
 ---
 
-## 2. Pre-Login & Cold Boot Configuration
+## 2. Desktop Session Configuration
 
-To allow the phone to authenticate you at the initial boot login screen (before your user account logs in):
+Biometric authentication operates within active user desktop sessions (lockscreen unlock and sudo elevation):
 
-### A. Enable User Lingering
-By default on systemd, user session services and `/run/user/1000/` only launch after interactive login. Enabling linger starts your user systemd manager at cold boot:
-
-```bash
-sudo loginctl enable-linger kanhaji
-```
-
-### B. Enable Systemd User Service
+### A. Enable Systemd User Service
 Link the release binary and enable the user service:
 
 ```bash

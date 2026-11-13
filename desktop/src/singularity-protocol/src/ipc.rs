@@ -32,6 +32,7 @@ pub enum IpcRequest {
     NotificationReply { id: String, text: String },
     NotificationAction { id: String, action_id: String },
     ListNotifications,
+    FindDevice { ring: bool },
     Custom {
         feature: String,
         action: String,
@@ -43,7 +44,10 @@ pub enum IpcRequest {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "event", content = "data")]
 pub enum AuthProgressEvent {
-    Ready,
+    Ready {
+        #[serde(default)]
+        device_name: Option<String>,
+    },
     FingerMismatch { attempt: u32 },
     SensorLockout { duration_secs: u32, message: String },
     Cancelled,
@@ -68,6 +72,7 @@ pub enum IpcResponse {
     CameraStatus(crate::camera::CameraStatus),
     Devices(Vec<crate::device::DeviceEntry>),
     Notifications(Vec<crate::notification::PhoneNotification>),
+    FindDeviceResult { ringing: bool },
     Error(String),
 }
 
@@ -131,5 +136,13 @@ mod tests {
         let cam_resp = IpcResponse::CameraStatus(crate::camera::CameraStatus::default());
         let cam_resp_json = serde_json::to_string(&cam_resp).unwrap();
         assert!(cam_resp_json.contains("CameraStatus"));
+
+        let find_req = IpcRequest::FindDevice { ring: true };
+        let find_json = serde_json::to_string(&find_req).unwrap();
+        assert!(find_json.contains("FindDevice"));
+
+        let find_resp = IpcResponse::FindDeviceResult { ringing: true };
+        let find_resp_json = serde_json::to_string(&find_resp).unwrap();
+        assert!(find_resp_json.contains("FindDeviceResult"));
     }
 }

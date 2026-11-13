@@ -51,17 +51,10 @@ class LockTransitionHelperTest {
     }
 
     @Test
-    fun testTransitionToLockedPromptModeLogin() {
-        val s = AuthSettings(loginMode = AuthMode.PROMPT)
+    fun testTransitionToLockedWhenNotLoggedInDoesNothing() {
+        val s = AuthSettings(unlockMode = AuthMode.PROMPT)
         LockTransitionHelper.handleLockTransition(fakeContext, locked = true, loggedIn = false) { s }
-        assertTrue(promptCalled); assertTrue(promptIsLogin); assertFalse(notifyCalled)
-    }
-
-    @Test
-    fun testTransitionToLockedNotifyModeLogin() {
-        val s = AuthSettings(loginMode = AuthMode.NOTIFY)
-        LockTransitionHelper.handleLockTransition(fakeContext, locked = true, loggedIn = false) { s }
-        assertTrue(notifyCalled); assertTrue(notifyIsLogin); assertFalse(promptCalled)
+        assertFalse(promptCalled); assertFalse(notifyCalled); assertFalse(dismissCalled)
     }
 
     @Test

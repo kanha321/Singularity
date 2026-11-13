@@ -46,7 +46,7 @@ The Singularity architecture is designed as a layered onion model: core services
 | **Power Management (`reboot`, etc.)** | ⚙️ **All systemd Distros**| `systemctl {reboot,poweroff,suspend,hibernate}`| Android Power Grid & FAB | ❌ No |
 | **Session Tracking (`isLoggedIn`)** | ⚙️ **All systemd Distros**| `loginctl list-sessions` parsing | Android UI session state | ❌ No |
 | **Generic Lock/Unlock Fallback** | ⚙️ **All systemd Distros**| `loginctl lock-session` / D-Bus `ScreenSaver` | Android Homescreen Lock FAB | ❌ No |
-| **Persistent Daemon Background Run** | ⚙️ **All systemd Distros**| `systemd --user` unit + `loginctl enable-linger` | None (Host service manager) | ❌ No |
+| **Persistent Daemon Background Run** | ⚙️ **All systemd Distros**| `systemd --user` unit (`default.target`) | None (Host service manager) | ❌ No |
 | **Wi-Fi Auto-Reconnection** | 📶 **NetworkManager** | NM Dispatcher (`/etc/NetworkManager/dispatcher.d`) | Wireless ADB enabled (`:5555`) | ❌ No |
 | **Automated System Setup (`setup.sh`)**| 📦 **Arch Linux Only** | Arch `pacman` dependencies & Arch PAM layouts | None | ❌ No |
 | **Transparent Storage Mount (`/mnt/*`)** | 🐧 **Universal Linux** | Userspace FUSE (`sshfs` over ADB TCP tunnel) | Root OpenSSH / SFTP daemon | ⚡ **Yes** |
@@ -111,7 +111,7 @@ These features operate across virtually all modern mainstream Linux distribution
 * **Universal Lockind Adapter (`logind.rs`):**
   * **Mechanism:** Uses `loginctl lock-session` / `unlock-session` and reads `LockedHint` via systemd or `org.freedesktop.ScreenSaver` over D-Bus.
 * **Service Supervisor Lifecycle:**
-  * **Mechanism:** Packaged as a standard `systemd --user` service with user lingering (`loginctl enable-linger`) so the convergence engine stays alive across logout and lock boundaries.
+  * **Mechanism:** Packaged as a standard `systemd --user` service (`default.target`) that starts automatically upon user login and manages convergence across lock boundaries.
 
 ---
 

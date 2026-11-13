@@ -119,7 +119,7 @@ mod tests {
 
         let info = DeviceInfo {
             serial: "test".into(),
-            model: "POCO F5".into(),
+            model: "Pixel 8".into(),
             android_version: "16".into(),
         };
         let device = DeviceBridge::new(info, Some(Arc::new(RootBridge::new())), Arc::new(ShellBridge::new()), None);

@@ -1,5 +1,6 @@
 package com.kanhaji.singularity.service.bridge
 
+import android.content.Context
 import android.os.Build
 import android.util.Log
 import kotlinx.coroutines.*
@@ -16,7 +17,7 @@ class UdpDiscoveryBeacon(private val port: Int = 2829, private val tcpPort: Int 
 
     private var beaconJob: Job? = null
 
-    fun start(scope: CoroutineScope) {
+    fun start(scope: CoroutineScope, context: Context? = null) {
         if (beaconJob?.isActive == true) return
         beaconJob = scope.launch(Dispatchers.IO) {
             Log.i(TAG, "Starting UDP discovery beacon sender on port $port...")
@@ -24,9 +25,11 @@ class UdpDiscoveryBeacon(private val port: Int = 2829, private val tcpPort: Int 
             try {
                 socket = DatagramSocket()
                 socket.broadcast = true
+                val deviceName = context?.let { com.kanhaji.singularity.util.DeviceIdentityHelper.getFriendlyDeviceName(it) } ?: Build.MODEL
                 val payload = JSONObject().apply {
                     put("singularity", "beacon")
-                    put("device", Build.MODEL)
+                    put("device", deviceName)
+                    put("model", Build.MODEL)
                     put("port", tcpPort)
                 }.toString().toByteArray(Charsets.UTF_8)
 

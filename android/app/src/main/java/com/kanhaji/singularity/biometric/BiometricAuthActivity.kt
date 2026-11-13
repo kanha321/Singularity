@@ -20,7 +20,6 @@ class BiometricAuthActivity : FragmentActivity() {
         const val EXTRA_TITLE = "extra_title"
         const val EXTRA_REASON = "extra_reason"
         const val EXTRA_IS_UNLOCK = "extra_is_unlock"
-        const val EXTRA_IS_LOGIN = "extra_is_login"
         const val EXTRA_POWER_ACTION = "extra_power_action"
 
         private var activeActivity = java.lang.ref.WeakReference<BiometricAuthActivity?>(null)
@@ -62,16 +61,10 @@ class BiometricAuthActivity : FragmentActivity() {
         }
 
         val isUnlock = intent.getBooleanExtra(EXTRA_IS_UNLOCK, false)
-        val isLogin = intent.getBooleanExtra(EXTRA_IS_LOGIN, false)
         val settings = AuthSettingsManager.settings.value
 
         if (isUnlock && settings.unlockMode == AuthMode.DENY) {
             Toast.makeText(this, "Unlocking with phone is restricted", Toast.LENGTH_SHORT).show()
-            dismissAndFinish()
-            return
-        }
-        if (isLogin && settings.loginMode == AuthMode.DENY) {
-            Toast.makeText(this, "Logging in with phone is restricted", Toast.LENGTH_SHORT).show()
             dismissAndFinish()
             return
         }
@@ -102,11 +95,10 @@ class BiometricAuthActivity : FragmentActivity() {
         isPromptActive = true
 
         val isUnlock = intent.getBooleanExtra(EXTRA_IS_UNLOCK, false)
-        val isLogin = intent.getBooleanExtra(EXTRA_IS_LOGIN, false)
         val powerAction = intent.getStringExtra(EXTRA_POWER_ACTION)
-        val isPamAuth = !isUnlock && !isLogin && (powerAction == null)
+        val isPamAuth = !isUnlock && (powerAction == null)
 
-        val factory = BiometricPromptFactory(this, isUnlock, isLogin, powerAction) { success ->
+        val factory = BiometricPromptFactory(this, isUnlock, powerAction) { success ->
             isPromptActive = false
             biometricPrompt = null
             setResult(if (success) Activity.RESULT_OK else Activity.RESULT_CANCELED)
@@ -115,7 +107,12 @@ class BiometricAuthActivity : FragmentActivity() {
 
         val prompt = factory.createPrompt()
         this.biometricPrompt = prompt
-        prompt.authenticate(factory.createPromptInfo(title, reason))
+        val cryptoObject = com.kanhaji.singularity.security.KeystoreManager.createBiometricCryptoObject()
+        if (cryptoObject != null) {
+            prompt.authenticate(factory.createPromptInfo(title, reason), cryptoObject)
+        } else {
+            prompt.authenticate(factory.createPromptInfo(title, reason))
+        }
         if (isPamAuth) AppBridgeService.reportBiometricProgress("auth_ready", 0)
     }
 }

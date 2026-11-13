@@ -131,14 +131,7 @@ systemctl --user daemon-reload
 systemctl --user enable --now singularity-daemon.service
 ```
 
-### Step 3: Enable User Lingering (Cold Boot Support)
-Allows user systemd services and the `/run/user/1000/` runtime directory to initialize before graphical login:
-
-```bash
-sudo loginctl enable-linger kanhaji
-```
-
-### Step 4: NetworkManager Wi-Fi ADB Dispatcher
+### Step 3: NetworkManager Wi-Fi ADB Dispatcher
 Ensure `/etc/NetworkManager/dispatcher.d/90-adb-connect` automatically connects to your phone over Wi-Fi when connected to your home network:
 
 ```sh

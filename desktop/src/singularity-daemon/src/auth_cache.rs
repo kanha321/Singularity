@@ -43,7 +43,7 @@ impl CachedAuthSettings {
     pub fn get_mode(&self, action: &str) -> &str {
         let act = action.to_lowercase();
         if act.contains("login") || act.contains("greetd") {
-            &self.login_mode
+            "deny"
         } else if act.contains("unlock") || act.contains("lock") || act.contains("screen") || act.contains("dms") {
             &self.unlock_mode
         } else {
@@ -90,7 +90,8 @@ mod tests {
         let settings = CachedAuthSettings::default();
         assert_eq!(settings.get_mode("sudo"), "prompt");
         assert_eq!(settings.get_mode("unlock"), "prompt");
-        assert_eq!(settings.get_mode("login"), "notify");
+        assert_eq!(settings.get_mode("login"), "deny");
+        assert!(settings.is_denied("login"));
         assert!(!settings.is_denied("sudo"));
         assert!(!settings.is_snoozed());
     }

@@ -146,14 +146,6 @@ setup_host() {
     mkdir -p "${USER_HOME}/.config/systemd/user"
     cp "${DESKTOP_DIR}/src/singularity-daemon/singularity-daemon.service" "${USER_HOME}/.config/systemd/user/"
 
-    log_info "Enabling systemd linger for ${CURRENT_USER} (ensures pre-login cold-boot daemon)..."
-    if ! loginctl show-user "${CURRENT_USER}" 2>/dev/null | grep -q "Linger=yes"; then
-        sudo loginctl enable-linger "${CURRENT_USER}"
-        log_success "Linger enabled."
-    else
-        log_success "Linger already enabled."
-    fi
-
     log_info "Starting singularity-daemon.service..."
     systemctl --user daemon-reload
     systemctl --user enable --now singularity-daemon.service

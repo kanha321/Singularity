@@ -82,7 +82,7 @@ mod tests {
     async fn device_bridge_broadcasts_events_to_subscribers() {
         let info = DeviceInfo {
             serial: "10.235.203.184:5555".into(),
-            model: "POCO F5".into(),
+            model: "Pixel 8".into(),
             android_version: "16".into(),
         };
         let device = DeviceBridge::new(
@@ -113,7 +113,7 @@ mod tests {
     fn device_bridge_unrooted_constructor_disables_root() {
         let info = DeviceInfo {
             serial: "10.235.203.184:5555".into(),
-            model: "POCO F5".into(),
+            model: "Pixel 8".into(),
             android_version: "16".into(),
         };
         let device = DeviceBridge::unrooted(info, Arc::new(ShellBridge::new()), None);

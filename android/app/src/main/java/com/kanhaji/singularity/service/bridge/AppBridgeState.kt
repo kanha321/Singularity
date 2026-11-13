@@ -37,6 +37,7 @@ object AppBridgeState {
     val selectedAudioRoute = MutableStateFlow<String?>("phone")
     val activeAudioRoute = MutableStateFlow<ActiveAudioRouteInfo?>(null)
     val isListeningToLaptop = MutableStateFlow<Boolean>(false)
+    val isLockingPc = MutableStateFlow<Boolean>(false)
     val pendingAudioRouteCommand = AtomicReference<JSONObject?>(null)
     val pendingUnlockRequest = AtomicBoolean(false)
     val pendingLockRequest = AtomicBoolean(false)
@@ -53,6 +54,7 @@ object AppBridgeState {
         isPcConnected.value = false
         pcLockState.value = "disconnected"
         pcLoginState.value = false
+        isLockingPc.value = false
         currentAuthRequest.value = null
         pendingUnlockRequest.set(false)
         pendingLockRequest.set(false)
@@ -80,6 +82,9 @@ object AppBridgeState {
         val locked = json.optBoolean("locked", false)
         val loggedIn = json.optBoolean("logged_in", json.optBoolean("isLoggedIn", false))
         pcLockState.value = if (locked) "locked" else "unlocked"
+        if (locked) {
+            isLockingPc.value = false
+        }
         pcLoginState.value = loggedIn
         val host = json.optString("file_server_host", "127.0.0.1")
         val port = json.optInt("file_server_port", 8920)
@@ -98,9 +103,11 @@ object AppBridgeState {
     }
 
     fun requestPcUnlock() { pendingUnlockRequest.set(true) }
-    fun requestPcLock() { pendingLockRequest.set(true) }
+    fun requestPcLock() {
+        pendingLockRequest.set(true)
+        isLockingPc.value = true
+    }
     fun requestPcLogout() { pendingLogoutRequest.set(true) }
-    fun requestPcLogin() { pendingLoginRequest.set(true); pendingUnlockRequest.set(true) }
     fun requestPowerAction(action: String) { pendingPowerAction.set(action) }
     fun requestOpenUrlOnDesktop(url: String) { pendingOpenUrl.set(url) }
     fun requestStartCamera(lens: String = "main") { pendingCameraLens.set(lens); selectedCameraLens.value = lens; pendingCameraAction.set("start") }

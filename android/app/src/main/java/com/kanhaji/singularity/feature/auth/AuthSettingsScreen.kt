@@ -78,13 +78,6 @@ fun AuthSettingsScreen() {
                 onModeSelected = { AuthSettingsManager.updateSettings(settings.copy(sudoMode = it)) }
             )
 
-            AuthModeSelectorCard(
-                title = "Desktop Login",
-                subtitle = "greetd & cold-boot login authorization",
-                selectedMode = settings.loginMode,
-                onModeSelected = { AuthSettingsManager.updateSettings(settings.copy(loginMode = it)) }
-            )
-
             FeatureSectionHeader("Timeouts")
 
             AuthTimeoutsCard(

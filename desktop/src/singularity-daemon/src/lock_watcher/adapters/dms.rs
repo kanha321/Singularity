@@ -32,10 +32,10 @@ impl LockerAdapter for DmsAdapter {
     }
 
     async fn lock(&self) -> Result<()> {
-        let _ = Command::new("dms")
-            .args(["ipc", "call", "lock", "lock"])
-            .status()
-            .await;
+        let _ = Command::new("dms").args(["ipc", "call", "lock", "lock"]).status().await;
+        if let Some(id) = super::logind::get_active_session_id().await {
+            let _ = Command::new("loginctl").args(["lock-session", &id]).status().await;
+        }
         Ok(())
     }
 
@@ -44,6 +44,9 @@ impl LockerAdapter for DmsAdapter {
             .args(["ipc", "call", "lock", "unlock"])
             .status()
             .await;
+        if let Some(id) = super::logind::get_active_session_id().await {
+            let _ = Command::new("loginctl").args(["unlock-session", &id]).status().await;
+        }
         Ok(())
     }
 

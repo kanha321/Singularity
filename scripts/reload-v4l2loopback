@@ -1,0 +1,9 @@
+#!/bin/sh
+# Loads or reloads v4l2loopback for Singularity Continuity Camera.
+# Run through pkexec with the com.kanhaji.singularity.camera.policy rule.
+set -e
+if grep -q '^v4l2loopback ' /proc/modules; then
+    modprobe -r v4l2loopback || true
+fi
+modprobe v4l2loopback video_nr=10 card_label="Singularity Camera" exclusive_caps=1
+

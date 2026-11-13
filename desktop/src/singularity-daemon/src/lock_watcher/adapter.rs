@@ -8,6 +8,7 @@ pub trait LockerAdapter: Send + Sync {
     fn name(&self) -> &'static str;
 
     /// Checks if this locker environment is currently active and usable.
+    #[allow(dead_code)]
     async fn is_available(&self) -> bool;
 
     /// Queries whether the screen is currently locked.

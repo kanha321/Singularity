@@ -23,6 +23,7 @@ class AppBridgeService : Service() {
 
         val currentAuthRequest = AppBridgeState.currentAuthRequest; val pcLockState = AppBridgeState.pcLockState
         val pcLoginState = AppBridgeState.pcLoginState; val isPcConnected = AppBridgeState.isPcConnected
+        val isLockingPc = AppBridgeState.isLockingPc
         val isPhoneLocked = AppBridgeState.isPhoneLocked; val isCameraStreaming = AppBridgeState.isCameraStreaming
         val isCameraMicActive = AppBridgeState.isCameraMicActive; val selectedCameraLens = AppBridgeState.selectedCameraLens
         val pendingCameraAction = AppBridgeState.pendingCameraAction; val pendingCameraLens = AppBridgeState.pendingCameraLens
@@ -40,17 +41,18 @@ class AppBridgeService : Service() {
             if (context != null) AppBridgeNotificationHelper.dismissPcLockedNotification(context)
         }
         fun requestPcUnlock() = AppBridgeState.requestPcUnlock(); fun requestPcLock() = AppBridgeState.requestPcLock()
-        fun requestPcLogout() = AppBridgeState.requestPcLogout(); fun requestPcLogin() = AppBridgeState.requestPcLogin()
+        fun requestPcLogout() = AppBridgeState.requestPcLogout()
         fun requestPowerAction(action: String) = AppBridgeState.requestPowerAction(action)
         fun requestOpenUrlOnDesktop(url: String) = AppBridgeState.requestOpenUrlOnDesktop(url)
         fun requestStartCamera(lens: String = "main") = AppBridgeState.requestStartCamera(lens)
         fun requestStopCamera() = AppBridgeState.requestStopCamera(); fun requestSwitchLens(lens: String) = AppBridgeState.requestSwitchLens(lens)
         fun pushAuthSettings(s: com.kanhaji.singularity.feature.auth.model.AuthSettings) { Log.i(TAG, "Settings: ${s.toJson()}") }
         fun dismissPcLockedNotification(ctx: Context) = AppBridgeNotificationHelper.dismissPcLockedNotification(ctx)
-        fun showPcLockedNotification(ctx: Context, isLogin: Boolean = false, fullScreen: Boolean = false) =
-            AppBridgeNotificationHelper.showPcLockedNotification(ctx, isLogin, fullScreen)
+        fun showPcLockedNotification(ctx: Context, fullScreen: Boolean = false) =
+            AppBridgeNotificationHelper.showPcLockedNotification(ctx, fullScreen)
         fun reportBiometricProgress(e: String, a: Int, m: String? = null) = BiometricAuthBridge.reportBiometricProgress(e, a, m)
-        fun reportBiometricResult(s: Boolean, e: String?, a: Int = 0, l: Boolean = false) = BiometricAuthBridge.reportBiometricResult(s, e, a, l)
+        fun reportBiometricResult(s: Boolean, e: String?, a: Int = 0, l: Boolean = false, sig: String? = null, c: Long = 0L) =
+            BiometricAuthBridge.reportBiometricResult(s, e, a, l, sig, c)
         fun onBiometricPromptDismissed(ctx: Context) = BiometricAuthBridge.onBiometricPromptDismissed(ctx); fun rejectActiveAuth(reason: String = "User rejected in app") = BiometricAuthBridge.rejectActiveAuth(reason)
         fun relaunchBiometricPrompt(ctx: Context) = BiometricAuthBridge.relaunchBiometricPrompt(ctx)
         fun start(ctx: Context) {
@@ -100,7 +102,7 @@ class AppBridgeService : Service() {
             stopSelf()
         }
         startConnectionWatchdog()
-        udpBeacon.start(serviceScope)
+        udpBeacon.start(serviceScope, this)
         com.kanhaji.singularity.feature.audio.stream.AudioStreamClient.instance.initialize(serviceScope)
     }
 
@@ -128,7 +130,7 @@ class AppBridgeService : Service() {
         onPcDisconnected(this)
         AppBridgeNotificationHelper.dismissPcLockedNotification(this)
         AppBridgeNotificationHelper.updateHighwayNotification(this, false)
-        udpBeacon.start(serviceScope)
+        udpBeacon.start(serviceScope, this)
     }
 
     private fun startConnectionWatchdog() {
@@ -137,7 +139,7 @@ class AppBridgeService : Service() {
                 delay(1000)
                 val last = AppBridgeState.lastPacketReceivedMs.get()
                 val elapsed = System.currentTimeMillis() - last
-                if (AppBridgeState.isPcConnected.value && last > 0 && elapsed > 8000L) {
+                if (AppBridgeState.isPcConnected.value && last > 0 && elapsed > 15000L) {
                     handlePcDisconnected()
                 }
             }

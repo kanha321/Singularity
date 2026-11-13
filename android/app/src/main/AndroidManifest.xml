@@ -14,6 +14,7 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:ignore="QueryAllPackagesPermission" />
@@ -87,6 +88,15 @@
             android:windowSoftInputMode="stateAlwaysHidden" />
 
         <activity
+            android:name=".feature.find.FindDeviceAlertActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Singularity"
+            android:launchMode="singleTop"
+            android:excludeFromRecents="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true" />
+
+        <activity
             android:name=".feature.share.ShareReceiverActivity"
             android:exported="true"
             android:label="Send to Desktop"
@@ -119,6 +129,14 @@
             android:exported="true" />
 
         <receiver
+            android:name=".feature.find.DeviceRinger$FindDeviceStopReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.kanhaji.singularity.action.STOP_RINGING" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
             android:name=".feature.notification.TestNotificationReceiver"
             android:exported="true">
             <intent-filter>
@@ -148,9 +166,9 @@
         </service>
 
         <service
-            android:name=".feature.audio.qs.LaptopVolumeTileService"
-            android:label="Laptop Volume"
-            android:icon="@drawable/ic_volume_up"
+            android:name=".feature.audio.qs.AudioOutputToggleTileService"
+            android:label="Audio Output"
+            android:icon="@drawable/ic_laptop_speaker"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
             android:exported="true">
             <intent-filter>

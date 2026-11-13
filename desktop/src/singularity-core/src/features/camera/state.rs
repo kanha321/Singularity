@@ -98,6 +98,8 @@ impl CameraState {
             zoom: s.zoom,
             has_mic: s.has_mic,
             readers_count: s.readers_count,
+            active_device: "/dev/video10".into(),
+            error_message: None,
         }
     }
 }

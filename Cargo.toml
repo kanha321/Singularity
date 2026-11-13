@@ -44,3 +44,8 @@ thiserror = "1.0"
 clap = { version = "4.5", features = ["derive", "env"] }
 dirs = "5.0"
 tempfile = "3.10"
+
+# Cryptography & Attestation
+p256 = { version = "0.13", features = ["ecdsa", "pkcs8"] }
+base64 = "0.22"
+rand = "0.8"

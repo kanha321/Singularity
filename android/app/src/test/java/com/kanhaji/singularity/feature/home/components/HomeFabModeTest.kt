@@ -12,24 +12,20 @@ class HomeFabModeTest {
     }
 
     @Test
-    fun resolveFabMode_loggedOut_returnsLoginRegardlessOfLockState() {
-        // isLoggedIn takes top priority when connected
-        val modeLocked = resolveFabMode(isPcConnected = true, isLoggedIn = false, isPcLocked = true)
-        assertThat(modeLocked).isEqualTo(HomeFabMode.LOGIN)
-
-        val modeUnlocked = resolveFabMode(isPcConnected = true, isLoggedIn = false, isPcLocked = false)
-        assertThat(modeUnlocked).isEqualTo(HomeFabMode.LOGIN)
-    }
-
-    @Test
-    fun resolveFabMode_loggedInAndLocked_returnsUnlock() {
-        val mode = resolveFabMode(isPcConnected = true, isLoggedIn = true, isPcLocked = true)
+    fun resolveFabMode_locked_returnsUnlock() {
+        val mode = resolveFabMode(isPcConnected = true, isLoggedIn = false, isPcLocked = true)
         assertThat(mode).isEqualTo(HomeFabMode.UNLOCK)
+
+        val modeLoggedIn = resolveFabMode(isPcConnected = true, isLoggedIn = true, isPcLocked = true)
+        assertThat(modeLoggedIn).isEqualTo(HomeFabMode.UNLOCK)
     }
 
     @Test
-    fun resolveFabMode_loggedInAndUnlocked_returnsLock() {
-        val mode = resolveFabMode(isPcConnected = true, isLoggedIn = true, isPcLocked = false)
+    fun resolveFabMode_unlocked_returnsLock() {
+        val mode = resolveFabMode(isPcConnected = true, isLoggedIn = false, isPcLocked = false)
         assertThat(mode).isEqualTo(HomeFabMode.LOCK)
+
+        val modeLoggedIn = resolveFabMode(isPcConnected = true, isLoggedIn = true, isPcLocked = false)
+        assertThat(modeLoggedIn).isEqualTo(HomeFabMode.LOCK)
     }
 }

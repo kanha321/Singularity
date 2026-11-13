@@ -16,6 +16,7 @@ pub struct LockActions {
     pub audio_command: Option<singularity_protocol::AudioRouteCommand>,
     pub phone_notifications: Vec<singularity_protocol::PhoneNotification>,
     pub phone_dismissals: Vec<singularity_protocol::NotificationDismiss>,
+    pub phone_ringing: Option<bool>,
 }
 
 fn get_local_ip_for(target: &str) -> Option<String> {
@@ -68,6 +69,7 @@ impl AppBridgeStream {
         desktop_notifs: Option<&[singularity_protocol::DesktopNotification]>,
         desktop_dismissals: Option<&[singularity_protocol::NotificationDismiss]>,
         action_invokes: Option<&[singularity_protocol::NotificationActionInvoke]>,
+        ring_phone: Option<bool>,
     ) -> Result<LockActions> {
         let lens_str = match cam_status.lens {
             singularity_protocol::CameraLens::Ultrawide => "ultrawide",
@@ -87,6 +89,7 @@ impl AppBridgeStream {
         if let Some(dn) = desktop_notifs.filter(|n| !n.is_empty()) { req["desktop_notifications"] = serde_json::json!(dn); }
         if let Some(dd) = desktop_dismissals.filter(|d| !d.is_empty()) { req["desktop_dismissals"] = serde_json::json!(dd); }
         if let Some(ai) = action_invokes.filter(|a| !a.is_empty()) { req["notification_action_invokes"] = serde_json::json!(ai); }
+        if let Some(r) = ring_phone { req["ring_phone"] = serde_json::json!(r); }
         let mut req_str = serde_json::to_string(&req).map_err(|e| DaemonError::Protocol(e.into()))?;
         req_str.push('\n');
         self.writer.write_all(req_str.as_bytes()).await?;
@@ -120,6 +123,7 @@ pub fn parse_lock_actions(v: &serde_json::Value) -> LockActions {
         audio_command: v.get("audio_route").and_then(|a| serde_json::from_value(a.clone()).ok()),
         phone_notifications: v.get("phone_notifications").and_then(|n| serde_json::from_value(n.clone()).ok()).unwrap_or_default(),
         phone_dismissals: v.get("phone_dismissals").and_then(|d| serde_json::from_value(d.clone()).ok()).unwrap_or_default(),
+        phone_ringing: v.get("phone_ringing").and_then(|r| r.as_bool()),
     }
 }
 

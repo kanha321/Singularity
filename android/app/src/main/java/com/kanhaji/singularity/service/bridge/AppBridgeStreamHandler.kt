@@ -59,7 +59,11 @@ object AppBridgeStreamHandler {
     private suspend fun dispatchAction(context: Context, json: JSONObject, writer: PrintWriter, onTerminate: () -> Unit): JSONObject? {
         return when (json.optString("action")) {
             "ping" -> JSONObject().put("status", "pong")
-            "status" -> JSONObject().put("status", "online").put("package", context.packageName)
+            "status" -> JSONObject()
+                .put("status", "online")
+                .put("package", context.packageName)
+                .put("device_name", com.kanhaji.singularity.util.DeviceIdentityHelper.getFriendlyDeviceName(context))
+                .put("model", android.os.Build.MODEL)
             "shutdown", "terminate_service" -> {
                 writer.println(JSONObject().put("status", "shutting_down").toString())
                 writer.flush()
@@ -70,20 +74,47 @@ object AppBridgeStreamHandler {
                 val reason = json.optString("reason", "Host Authentication")
                 val timeout = json.optLong("timeout_secs", 15L)
                 val authAction = json.optString("auth_action", json.optString("action_type", "sudo"))
-                BiometricAuthBridge.processBiometricAuth(context, authAction, reason, timeout) { event, attempt, message ->
+                val nonce = json.optString("nonce", "").ifBlank { null }
+                val timestampSecs = json.optLong("timestamp", System.currentTimeMillis() / 1000L)
+                val friendlyName = com.kanhaji.singularity.util.DeviceIdentityHelper.getFriendlyDeviceName(context)
+                BiometricAuthBridge.processBiometricAuth(context, authAction, reason, timeout, nonce, timestampSecs) { event, attempt, message ->
                     try {
-                        val pJson = JSONObject().put("event", event).put("attempt", attempt)
+                        val pJson = JSONObject()
+                            .put("event", event)
+                            .put("attempt", attempt)
+                            .put("device_name", friendlyName)
                         if (message != null) pJson.put("message", message)
                         writer.println(pJson.toString())
                         writer.flush()
                     } catch (_: Exception) {}
                 }
             }
+            "pair", "get_public_key" -> {
+                val pubkey = com.kanhaji.singularity.security.KeystoreManager.getOrGeneratePublicKeyBase64()
+                val friendlyName = com.kanhaji.singularity.util.DeviceIdentityHelper.getFriendlyDeviceName(context)
+                JSONObject()
+                    .put("status", "ok")
+                    .put("device_id", android.os.Build.MODEL)
+                    .put("device_name", friendlyName)
+                    .put("model", android.os.Build.MODEL)
+                    .put("public_key", pubkey)
+            }
             "cancel_auth" -> {
                 BiometricAuthBridge.rejectActiveAuth("Cancelled by user on host")
                 BiometricAuthActivity.dismissActivePrompt()
                 AppBridgeNotificationHelper.cancelAuthNotification(context)
                 JSONObject().put("status", "cancelled")
+            }
+            "find_device", "ring_device" -> {
+                val ring = json.optBoolean("ring", true)
+                if (ring) {
+                    com.kanhaji.singularity.feature.find.DeviceRinger.start(context, force = true)
+                } else {
+                    com.kanhaji.singularity.feature.find.DeviceRinger.stop(context)
+                }
+                JSONObject()
+                    .put("status", "ok")
+                    .put("ringing", com.kanhaji.singularity.feature.find.DeviceRinger.isRinging.value)
             }
             "lock_state" -> handleLockState(context, json)
             else -> JSONObject().put("status", "unknown_action")
@@ -101,6 +132,15 @@ object AppBridgeStreamHandler {
             com.kanhaji.singularity.feature.audio.route.AudioRoutePreferences.restoreIfAvailable(sinks)
         }
         AppBridgeState.activeAudioRoute.value = AppBridgePayloadHelper.parseActiveAudioRoute(json)
+
+        if (json.has("ring_phone")) {
+            val ring = json.optBoolean("ring_phone")
+            if (ring) {
+                com.kanhaji.singularity.feature.find.DeviceRinger.start(context)
+            } else {
+                com.kanhaji.singularity.feature.find.DeviceRinger.stop(context)
+            }
+        }
 
         val desktopNotifs = json.optJSONArray("desktop_notifications")
         if (desktopNotifs != null) {
@@ -147,6 +187,7 @@ object AppBridgeStreamHandler {
         val locked = json.optBoolean("locked", false)
         val loggedIn = json.optBoolean("logged_in", json.optBoolean("isLoggedIn", false))
         LockTransitionHelper.handleLockTransition(context, locked, loggedIn)
-        return AppBridgePayloadHelper.buildLockResponse(locked, loggedIn)
+        val friendlyName = com.kanhaji.singularity.util.DeviceIdentityHelper.getFriendlyDeviceName(context)
+        return AppBridgePayloadHelper.buildLockResponse(locked, loggedIn, deviceName = friendlyName)
     }
 }
